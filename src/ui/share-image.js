@@ -8,6 +8,7 @@ import {$, teamChip, modalOpen, modalClose} from './dom.js?v=1.5.12';
 import {THEME_NAMES} from './prefs.js?v=1.5.12';
 import {traitNames, traitColorRank} from './traits.js?v=1.5.12';
 import {fmtMoney} from '../engine/contract.js?v=1.5.12';
+import {twoWayView} from '../engine/career.js?v=1.5.12';
 import {rpTagline, rpFamily, RP_F3, RP_F2, rpCumData, rpIntlData, rpHonorItems, rpOrgOf, rpProData, rpSalaryData, championshipYear} from './retire.js?v=1.5.12';
 /* 結算圖（Canvas 產生 PNG，回傳 data URL 供面板顯示與儲存）
    Single-sheet settlement layout from the design handoff, drawn 1:1 at the
@@ -40,7 +41,9 @@ export function readTheme(t){
 export function renderShareImage(evals,picks,opt){
   opt=opt||{};
   const mode=['stats','salary','ending'].includes(opt.mode)?opt.mode:'stats';
-  const isP=S.pos==='P';
+  /* 二刀流的版面依「有沒有真的打過二刀流球季」決定，不是看退休當下的 S.pos——
+     多數二刀流在退休前已被強制轉回單刀，看 S.pos 會讓那段履歷缺一半。 */
+  const TW=twoWayView(), isP=!TW&&S.pos==='P';
   const tiers=(evals||[]).map(t=>String(t).replace(/<[^>]+>/g,''));
   const hist=S.log.slice(), amaLogs=hist.filter(r=>!r.st), proLogs=hist.filter(r=>r.st);
   const cum=rpCumData(), honors=rpHonorItems();
@@ -275,7 +278,11 @@ export function renderShareImage(evals,picks,opt){
     /* ---- 生涯年表(職業,按球隊分段) ---- */
     if(pro){
       sec('生涯年表（職業成績）');
-      const defs=isP
+      /* 二刀流：投打各留五欄(欄位表見 career.js 的 TW_YEAR_HD)。投打的完整聯集是二十欄，
+         這張畫布排不下，所以捨棄 SV/HLD/BB 與 OBP/SLG/H/BB/SB/DEF。 */
+      const defs=TW
+        ?[{t:'年',w:48,a:'l'},{t:'齡',w:34,a:'r'},{t:'球隊',w:96,a:'l',zh:true},{t:'投G',w:40,a:'r',zh:true},{t:'IP',w:54,a:'r'},{t:'W-L',w:50,a:'r'},{t:'SO',w:44,a:'r'},{t:'ERA',w:52,a:'r'},{t:'打G',w:40,a:'r',zh:true},{t:'PA',w:48,a:'r'},{t:'AVG',w:52,a:'r'},{t:'HR',w:40,a:'r'},{t:'RBI',w:44,a:'r'},{t:'OPS',w:52,a:'r'}]
+        :isP
         ?[{t:'年',w:48,a:'l'},{t:'齡',w:34,a:'r'},{t:'球隊',w:96,a:'l',zh:true},{t:'G',w:40,a:'r'},{t:'IP',w:54,a:'r'},{t:'W-L',w:50,a:'r'},{t:'SV',w:42,a:'r'},{t:'HLD',w:46,a:'r'},{t:'SO',w:44,a:'r'},{t:'BB',w:42,a:'r'},{t:'ERA',w:52,a:'r'},{t:'WHIP',w:54,a:'r'}]
         :[{t:'年',w:48,a:'l'},{t:'齡',w:34,a:'r'},{t:'球隊',w:84,a:'l',zh:true},{t:'G',w:38,a:'r'},{t:'PA',w:44,a:'r'},{t:'AVG',w:50,a:'r'},{t:'OBP',w:50,a:'r'},{t:'SLG',w:50,a:'r'},{t:'OPS',w:50,a:'r'},{t:'H',w:38,a:'r'},{t:'HR',w:38,a:'r'},{t:'RBI',w:42,a:'r'},{t:'BB',w:36,a:'r'},{t:'SB',w:36,a:'r'},{t:'DEF',w:42,a:'r'}];
       const cols=tcols(defs); thRow(cols);
@@ -292,7 +299,9 @@ export function renderShareImage(evals,picks,opt){
       /* ---- 生涯合約薪資與當季表現 ---- */
       sec('生涯合約薪資與成績');
       if(salary&&salary.rows.length){
-        const defs=isP
+        const defs=TW
+          ?[{t:'年',w:48,a:'l'},{t:'齡',w:34,a:'r'},{t:'球隊／層級',w:150,a:'l',zh:true},{t:'年薪',w:108,a:'r',zh:true},{t:'投G',w:42,a:'r',zh:true},{t:'IP',w:56,a:'r'},{t:'ERA',w:55,a:'r'},{t:'打G',w:42,a:'r',zh:true},{t:'PA',w:52,a:'r'},{t:'HR',w:42,a:'r'},{t:'OPS',w:55,a:'r'}]
+          :isP
           ?[{t:'年',w:48,a:'l'},{t:'齡',w:34,a:'r'},{t:'球隊／層級',w:150,a:'l',zh:true},{t:'年薪',w:108,a:'r',zh:true},{t:'G',w:45,a:'r'},{t:'IP',w:60,a:'r'},{t:'W-L',w:55,a:'r'},{t:'SV',w:45,a:'r'},{t:'ERA',w:55,a:'r'}]
           :[{t:'年',w:48,a:'l'},{t:'齡',w:34,a:'r'},{t:'球隊／層級',w:150,a:'l',zh:true},{t:'年薪',w:108,a:'r',zh:true},{t:'G',w:45,a:'r'},{t:'PA',w:55,a:'r'},{t:'AVG',w:55,a:'r'},{t:'HR',w:45,a:'r'},{t:'RBI',w:48,a:'r'},{t:'OPS',w:55,a:'r'}];
         const cols=tcols(defs); thRow(cols);

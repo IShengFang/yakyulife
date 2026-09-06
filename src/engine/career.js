@@ -3,7 +3,7 @@ import {clamp} from '../core/rng.js?v=1.5.12';
 import {DPN, POSN, POS_ADJ_RUNS, POS_TIER_K, POS_TIER_STR} from '../data/abilities.js?v=1.5.12';
 import {LG_N} from '../data/teams.js?v=1.5.12';
 import {TIER_TH, LEAGUE_K, MILESTONE_DEF, HOF_TH_K} from '../data/economy.js?v=1.5.12';
-import {fmtIP, slgOf, roleName3, baseballERA, baseballWHIP} from './season.js?v=1.5.12';
+import {fmtIP, slgOf, roleName3, baseballERA, baseballWHIP, pitG} from './season.js?v=1.5.12';
 import {isCareerScoringAward} from './award-rules.js?v=1.5.12';
 /* ================= 生涯終章 ================= */
 const BUCKET_G={CPBL:120,NPB:143,MLB:162};
@@ -69,6 +69,65 @@ export function hitterCareerScore(st,bucket){
    用 S.pos 判斷的話，那十九年會在結算當下被整段當成純打者計分。
    單刀投手沒有打席、單刀野手沒有登板，所以這個判斷不會誤傷他們。 */
 export function isTwoWayCareer(st){ return !!(st&&(st.GP||0)>0&&(st.PA||0)>0&&(st.IP||0)>0); }
+/* ── 二刀流的表格欄位 ──
+   投打兩側的完整欄位聯集是二十欄，塞不進結算圖的 820px 畫布(單刀最寬的野手表就已經
+   佔掉 680 的可用 748)。所以這裡固定一組「兩側各留必要欄」的欄位表，逐年板、結算 HTML、
+   結算圖、薪資表四個畫面共用同一份——玩家在不同畫面看到的欄位才對得起來。
+   捨棄的是對二刀流沒有意義的欄位：投手側 SV/HLD/BB(二刀流不會被擺去後援)、
+   打者側 OBP/SLG/H/BB/SB/DEF(先發投手兼指定打擊，守備分本來就不計)。 */
+const TWF3=v=>v==null?'-':v.toFixed(3).replace(/^0/,'');
+const TWF2=v=>v==null?'-':v.toFixed(2);
+/* 一列裡「有沒有投球側／打擊側」要各自判斷：轉型前後的單刀球季也會混在同一張表裡，
+   缺的那一側印 '-' 而不是印 0，0 會被誤讀成「有上場但沒有產出」。
+   投球側不能用 pitG()——純打者的 st.G 是出賽場數，會把每個打者都判成有投球。 */
+export const twHasPit=st=>!!(st&&((st.IP||0)>0||(st.GP||0)>0));
+export const twHasBat=st=>!!(st&&(st.PA||0)>0);
+function twRate(s){
+  const era=(s.IP||0)>0?baseballERA(s):null, whip=(s.IP||0)>0?baseballWHIP(s):null;
+  const obp=(s.PA||0)>0?(s.H+(s.BB||0))/s.PA:null, slg=(s.AB||0)>0?slgOf(s):null;
+  const avg=(s.AB||0)>0?s.H/s.AB:null;
+  return {era,whip,avg,ops:(obp!=null&&slg!=null)?obp+slg:null};
+}
+export const TW_YEAR_HD=['投G','IP','W-L','SO','ERA','打G','PA','AVG','HR','RBI','OPS'];
+export function twYearCells(st){
+  const s=st||{},m=twRate(s),P=twHasPit(s),B=twHasBat(s);
+  return [P?pitG(s):'-',P?fmtIP(s.IP):'-',P?`${s.W||0}-${s.L||0}`:'-',P?(s.SO||0):'-',P?TWF2(m.era):'-',
+          B?(s.G||0):'-',B?(s.PA||0):'-',B?TWF3(m.avg):'-',B?(s.HR||0):'-',B?(s.RBI||0):'-',B?TWF3(m.ops):'-'];
+}
+export const TW_CUM_HD=['Yrs','投G','IP','W','L','SO','ERA','WHIP','打G','PA','AVG','HR','RBI','OPS'];
+export function twCumCells(st){
+  const s=st||{},m=twRate(s),P=twHasPit(s),B=twHasBat(s);
+  return [s.yr||0,P?pitG(s):'-',P?fmtIP(s.IP):'-',P?(s.W||0):'-',P?(s.L||0):'-',P?(s.SO||0):'-',
+          P?TWF2(m.era):'-',P?TWF2(m.whip):'-',
+          B?(s.G||0):'-',B?(s.PA||0):'-',B?TWF3(m.avg):'-',B?(s.HR||0):'-',B?(s.RBI||0):'-',B?TWF3(m.ops):'-'];
+}
+/* 同一組欄位的數值版，給結算圖「各欄最佳值」的比較用；沒打過的那一側是 null 不參與比較。 */
+export const TW_CUM_MIN_COLS={6:1,7:1};   /* ERA、WHIP 取最小 */
+export const TW_CUM_SKIP_COLS={0:1,4:1};  /* Yrs 不比、敗投比了沒意義 */
+export function twCumNums(st){
+  const s=st||{},m=twRate(s),P=twHasPit(s),B=twHasBat(s);
+  return [s.yr||0,P?pitG(s):null,P?(s.IP||0):null,P?(s.W||0):null,P?(s.L||0):null,P?(s.SO||0):null,
+          m.era,m.whip,B?(s.G||0):null,B?(s.PA||0):null,m.avg,B?(s.HR||0):null,B?(s.RBI||0):null,m.ops];
+}
+export const TW_INTL_HD=['投G','IP','W','SO','ERA','打G','PA','AVG','HR','RBI'];
+export function twIntlCells(st){
+  const s=st||{},m=twRate(s),P=twHasPit(s),B=twHasBat(s);
+  return [P?pitG(s):'-',P?fmtIP(s.IP):'-',P?(s.W||0):'-',P?(s.SO||0):'-',P?TWF2(m.era):'-',
+          B?(s.G||0):'-',B?(s.PA||0):'-',B?TWF3(m.avg):'-',B?(s.HR||0):'-',B?(s.RBI||0):'-'];
+}
+export const TW_PAY_HD=['年薪','投G','IP','ERA','打G','PA','HR','OPS'];
+export function twPayCells(st){
+  const s=st||{},m=twRate(s),P=twHasPit(s),B=twHasBat(s);
+  return [P?pitG(s):'-',P?fmtIP(s.IP):'-',P?TWF2(m.era):'-',
+          B?(s.G||0):'-',B?(s.PA||0):'-',B?(s.HR||0):'-',B?TWF3(m.ops):'-'];
+}
+/* 這一局要不要用二刀流版面。跟計分同一個理由：89.5% 的二刀流在退休前已經被強制轉回，
+   用 S.pos 判斷會讓那十九年的履歷用單刀版面印出來，缺的那一側整段消失。 */
+export function twoWayView(){
+  if(S.pos==='TW'||(S.twSeasons||0)>0)return true;
+  return (S.log||[]).some(r=>isTwoWayCareer(r.st))||
+    ['CPBL','NPB','MLB','MINOR'].some(b=>isTwoWayCareer(S.stats&&S.stats[b]));
+}
 export function careerScore(st,bucket){
   if(S.pos==='P')return pitcherCareerScore(st,bucket);
   /* 二刀流:兩份產出都是他真的打出來的，所以兩邊相加。會不會過強不是靠這裡壓，
@@ -233,7 +292,10 @@ export function tierOf(bucket){
 export function statTable(bucket){
   const st=S.stats[bucket]; if(!st)return '';
   let rows;
-  if(S.pos==='P'){
+  if(twoWayView()){
+    rows=`<tr>${TW_CUM_HD.map(h=>`<th>${h}</th>`).join('')}</tr>`+
+      `<tr>${twCumCells(st).map(v=>`<td>${v}</td>`).join('')}</tr>`;
+  }else if(S.pos==='P'){
     const era=st.IP>0?baseballERA(st).toFixed(2):'-';
     const whip=st.IP>0?baseballWHIP(st).toFixed(2):'-';
     rows=`<tr><th>Yrs</th><th>G</th><th>IP</th><th>W</th><th>L</th><th>SV</th><th>HLD</th><th>SO</th><th>BB</th><th>ERA</th><th>WHIP</th></tr>

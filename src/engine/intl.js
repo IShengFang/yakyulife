@@ -7,6 +7,9 @@ import {isSP, fmtIP, outsFromIP, ipFromOuts, normalizeIP, baseballERA} from './s
 import {ovr} from './ability.js?v=1.5.12';
 import {intlFinishIndex} from './championship.js?v=1.5.12';
 import {checkChampionTrait} from '../flow/events.js?v=1.5.12';
+/* 這一屆算不算二刀流：同一屆裡既有登板也有打席。二刀流在退休前多半已被強制轉回，
+   所以跟 career.isTwoWayCareer() 一樣，看的是實績而不是當下的 S.pos。 */
+export const twIntl=st=>!!(st&&(st.GP||0)>0&&(st.PA||0)>0&&(st.IP||0)>0);
 export function intlWalks(st){
   if(!st)return 0;
   if(Number.isFinite(st.BB))return Math.max(0,Math.round(st.BB));
@@ -15,6 +18,11 @@ export function intlWalks(st){
   return 0;
 }
 export function intlStatLine(st){
+  if(twIntl(st)){
+    const era=baseballERA(st);
+    return `投 ${st.GP} 場｜${fmtIP(st.IP)} 局｜${st.W} 勝｜${st.SO} 三振｜ERA ${era==null?'-':era.toFixed(2)}`+
+      `　／　打 ${st.G} 場｜${st.PA} 打席｜打擊率 ${st.AB>0?(st.H/st.AB).toFixed(3).replace(/^0/,''):'-'}｜${st.HR} 轟｜${st.RBI} 打點`;
+  }
   if(S.pos==='P'){
     const era=baseballERA(st);
     return `出賽 ${st.G}｜${fmtIP(st.IP)} 局｜${st.W} 勝｜${st.SV} 救援｜${st.SO} 三振｜${intlWalks(st)} 保送｜ERA ${era==null?'-':era.toFixed(2)}`;
@@ -33,7 +41,12 @@ export function addIntlStat(st){
 export function intlMvpRate(st,finish){
   if(finish>1)return 0; /* 賽會 MVP 原則上只從冠亞軍球隊產生 */
   let score=0;
-  if(S.pos==='P'){
+  /* 二刀流：兩側都是他真的打出來的，所以分數相加——跟生涯計分同一個原則。 */
+  if(twIntl(st)){
+    const era=baseballERA(st)??9, avg=st.AB>0?st.H/st.AB:0;
+    score=st.IP+st.SO*1.5+st.W*8+Math.max(0,3.5-era)*5-Math.max(0,era-3.5)*4
+         +st.H*2+st.HR*8+st.RBI*2+Math.max(0,avg-.250)*100;
+  }else if(S.pos==='P'){
     const era=baseballERA(st)??9;
     score=st.IP+st.SO*1.5+st.W*8+st.SV*6+Math.max(0,3.5-era)*5-Math.max(0,era-3.5)*4;
   }else{
@@ -76,10 +89,13 @@ export function maybeIntl(done){
       /* 先產生並保存本屆成績；事件卡與生涯結算共用同一份資料，不在結算時重骰 */
       let intlSt;
       { const a=S.ab, par=intlFmt.par, clutch=S.traits.clutch?1:0;
-        if(S.pos==='P'){ const dd=(a.vel+a.ctl+a.brk)/3-par;
+        const TW=S.pos==='TW';
+        /* 二刀流在國際賽兩邊都上：投球走先發線(短期賽最多一到兩場先發)，打擊照樣每場先發。
+           被安打／保送存在 pH/pBB，跟職業球季同一個約定——共用 H/BB 會被打擊側蓋掉。 */
+        if(S.pos==='P'||TW){ const dd=(a.vel+a.ctl+a.brk)/3-par;
           /* 【修正】區分先發與後援，並將局數與出賽場次連動，符合國際賽球數限制 */
           let g, ip;
-          if(isSP()){
+          if(isSP()||TW){
             g = teamGames>=6?ri(1,2):1; /* 預賽／八強最多一場先發，進四強或 12 強複賽後才可能二度先發 */
             ip = normalizeIP(g * (4.5 + R() * 2.5)); /* 配合球數限制，單場大約吃 4.5~7 局；量化為完整出局數 */
           } else {
@@ -92,15 +108,19 @@ export function maybeIntl(done){
           /* 與職業球季共用同一把 BB/9、H/9 尺；短期賽按實際局數縮放。 */
           const bb9=clamp(4.6-(a.ctl-par)*0.13+N0(0.4),1.2,7.5);
           const h9=clamp(9.2-dd*0.16+N0(0.5),5,13.5);
-          intlSt={G:g,IP:ip,H:Math.round(ip/9*h9),BB:Math.round(ip/9*bb9),SO:Math.round(ip/9*k9),ER:Math.round(era*ip/9),W:i<=2&&chance(45+clutch*8)?1:0,SV:!isSP()&&chance(30+clutch*6)?1:0};
-        } else { const dd=(a.con*0.5+a.pow*0.2+a.eye*0.18+a.spd*0.12)-par-0.5; /* 同步賽季 d 公式(含 pow) */
+          intlSt=TW
+            ?{GP:g,IP:ip,pH:Math.round(ip/9*h9),pBB:Math.round(ip/9*bb9),SO:Math.round(ip/9*k9),ER:Math.round(era*ip/9),W:i<=2&&chance(45+clutch*8)?1:0,SV:0}
+            :{G:g,IP:ip,H:Math.round(ip/9*h9),BB:Math.round(ip/9*bb9),SO:Math.round(ip/9*k9),ER:Math.round(era*ip/9),W:i<=2&&chance(45+clutch*8)?1:0,SV:!isSP()&&chance(30+clutch*6)?1:0};
+        }
+        if(S.pos!=='P'){ const dd=(a.con*0.5+a.pow*0.2+a.eye*0.18+a.spd*0.12)-par-0.5; /* 同步賽季 d 公式(含 pow) */
           const g=teamGames, pa=g*ri(3,4); /* 國家隊球星每場先發，出賽數不得超過該名次的實際賽程 */
           /* 與職業球季同式：選球直接決定保送率，並由 PA−BB 得到打數。 */
           const bb=Math.round(pa*clamp(0.062+(a.eye-par)*0.0034,0.045,0.17));
           const ab=pa-bb;
           const avg=clamp(0.270+dd*0.006+clutch*.015,0.15,0.5), h=Math.round(ab*avg);
           const hr=Math.round(h*clamp(0.06+Math.max(0,a.pow-par)*0.006+clutch*.01,0.03,0.28));
-          intlSt={G:g,PA:pa,AB:ab,H:h,HR:hr,RBI:Math.round((hr*2.1+h*0.35)*(1+clutch*.05)),BB:bb};
+          const bat={G:g,PA:pa,AB:ab,H:h,HR:hr,RBI:Math.round((hr*2.1+h*0.35)*(1+clutch*.05)),BB:bb};
+          intlSt=TW?{...intlSt,...bat}:bat;
         }
       }
       addIntlStat(intlSt);

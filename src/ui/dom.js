@@ -9,7 +9,7 @@ import {TRAIT_KEYS, TRAIT_FX} from '../data/traits.js?v=1.5.12';
 import {playerName, stageLabel} from '../core/state.js?v=1.5.12';
 import {salParts, fmtMoney} from '../engine/contract.js?v=1.5.12';
 import {roleN, fmtIP, slgOf, baseballERA} from '../engine/season.js?v=1.5.12';
-import {honorGroups, yearRanges} from '../engine/career.js?v=1.5.12';
+import {honorGroups, yearRanges, twoWayView, twHasPit, twHasBat} from '../engine/career.js?v=1.5.12';
 import {isChampionshipYear} from '../engine/championship.js?v=1.5.12';
 import {playerType, ovr} from '../engine/ability.js?v=1.5.12';
 
@@ -272,14 +272,18 @@ function secTraits(){
                :'<div class="bd-none">還沒有覺醒任何隱藏屬性。</div>')+`</div>`;
 }
 function secLog(){
-  const L=S.log||[], isP=S.pos==='P';
+  const L=S.log||[], TW=twoWayView(), isP=!TW&&S.pos==='P';
   const yearHTML=y=>{ const crown=isChampionshipYear(S.honors,y)
     ?'<span class="champ-crown" title="該年度奪冠" role="img" aria-label="冠軍"></span>':'';
     return `<span class="champ-slot">${crown}</span>${y}`; };
   /* 業餘年份沒有 st(逐項數據)，只有文字事蹟——這就是兩張表的分界 */
   const ama=L.filter(r=>!r.st), pro=L.filter(r=>r.st);
-  const hd=isP?['G','IP','W-L','SV','SO','ERA']:['G','PA','AVG','HR','RBI','OPS'];
-  const drop=isP?[1,0,0,1,1,0]:[1,1,0,0,1,0]; /* 手機留 3 欄:投手 IP/W-L/ERA、野手 AVG/HR/OPS */
+  /* 二刀流只有六格，兩側各佔三格：投球留 IP/W-L/ERA、打擊留 PA/HR/AVG。
+     手機再收成三格時每側各留一個率(ERA、AVG)加上長打(HR)，兩側都還看得到人。 */
+  const hd=TW?['IP','W-L','ERA','PA','HR','AVG']
+           :isP?['G','IP','W-L','SV','SO','ERA']:['G','PA','AVG','HR','RBI','OPS'];
+  const drop=TW?[1,1,0,1,0,0]
+           :isP?[1,0,0,1,1,0]:[1,1,0,0,1,0]; /* 手機留 3 欄:投手 IP/W-L/ERA、野手 AVG/HR/OPS */
   const cells=v=>v.map((t,i)=>`<span class="n${drop[i]?' opt':''}">${t}</span>`).join('');
   let h=`<div class="bd-sec sec-y"><div class="bd-sh">生涯逐年成績</div>`;
   if(!L.length)h+='<div class="bd-none">還沒有完整打過一個球季。</div>';
@@ -291,7 +295,12 @@ function secLog(){
       `<div class="bd-yr hd"><span class="y">年</span><span class="a opt">齡</span>`+
       `<span class="tm">球隊</span>${cells(hd)}</div>`;
     pro.forEach(r=>{ const s=r.st; let v;
-      if(isP){ const era=baseballERA(s);
+      /* 轉型前後的單刀球季會跟二刀流球季混在同一張表，缺的那一側逐列印 '-'。 */
+      if(TW){ const P=twHasPit(s), B=twHasBat(s);
+        const obp=s.PA>0?(s.H+s.BB)/s.PA:null, slg=s.AB>0?slgOf(s):null;
+        v=[P?fmtIP(s.IP):'-',P?`${s.W}-${s.L}`:'-',P?F2(baseballERA(s)):'-',
+           B?s.PA:'-',B?s.HR:'-',B?F3(s.AB>0?s.H/s.AB:null):'-'];
+      } else if(isP){ const era=baseballERA(s);
         v=[s.G,fmtIP(s.IP),`${s.W}-${s.L}`,s.SV||0,s.SO,F2(era)];
       } else { const obp=s.PA>0?(s.H+s.BB)/s.PA:null, slg=s.AB>0?slgOf(s):null;
         v=[s.G,s.PA,F3(s.AB>0?s.H/s.AB:null),s.HR,s.RBI,F3((obp!=null&&slg!=null)?obp+slg:null)]; }

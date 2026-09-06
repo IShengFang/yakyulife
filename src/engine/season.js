@@ -40,7 +40,7 @@ export function baseballERA(st){
 }
 export function baseballWHIP(st){
   const ip=normalizeIP(st&&st.IP);
-  return ip>0?((Number(st&&st.H)||0)+(Number(st&&st.BB)||0))/ip:null;
+  return ip>0?(pitH(st)+pitBB(st))/ip:null;
 }
 export function fmtIP(ip){ /* 以出局數顯示棒球局數：1/3 局=.1、2/3 局=.2 */
   const outs=outsFromIP(ip);
@@ -64,6 +64,13 @@ export function capSteals(st){
    ② st.dPit / st.dBat 是兩側各自的品質值，st.d 是給薪資與市場用的單一數字。
    ③ 開季投打配比(S.effort)決定投球場次的比例與打擊出賽的折扣。 */
 export const pitG=st=>Number.isFinite(st&&st.GP)?st.GP:((st&&st.G)||0);
+/* ④ 被安打與四死球同樣要分家。二刀流的 st.H/st.BB 是他自己敲的安打與被保送，
+   投球側的被安打／投出的四死球另存 st.pH/st.pBB——共用同一個欄位的話，
+   WHIP 會變成「(自己的安打＋自己的保送)÷投球局數」，而且賽季狀態倍率會在
+   兩側互相抵銷(投手側 ÷m 之後打擊側再 ×m)，等於兩邊的狀態調整都失效。
+   單刀投手沒有 pH/pBB，一律走這兩個讀取函式回退到 H/BB。 */
+export const pitH=st=>Number.isFinite(st&&st.pH)?st.pH:((st&&st.H)||0);
+export const pitBB=st=>Number.isFinite(st&&st.pBB)?st.pBB:((st&&st.BB)||0);
 export const TW_EFFORT={
   '全力投':{pit:0.85,bat:0.90,tj:1.45},
   '普通投':{pit:0.70,bat:1.00,tj:1.25},
@@ -82,7 +89,12 @@ export function simSeason(lv){
   const TW=S.pos==='TW', share=TW?twEffort():null;
   /* 二刀流一律先把登板數落地，即使今年不投(TJ 復健年)也是 0 而不是 undefined——
      normalizePitchingStats 靠 Number.isFinite(st.GP) 判斷要寫哪一個欄位。 */
-  if(TW)st.GP=0;
+  if(TW){ st.GP=0; st.pH=0; st.pBB=0; }
+  /* 投球側的三個欄位都依身分分家：單刀投手照舊寫 st.G/st.H/st.BB，二刀流寫
+     st.GP/st.pH/st.pBB，把 st.G/st.H/st.BB 讓給打擊側。normalizePitchingStats 與
+     pitG()/pitH()/pitBB() 都是靠「有沒有 GP/pH/pBB」判斷的，寫錯欄位會讓單刀投手
+     被誤判成二刀流。 */
+  const gK=TW?'GP':'G', hK=TW?'pH':'H', bbK=TW?'pBB':'BB';
   if((S.pos==='P'||TW)&&!S.pitchOut){
     const q=(a.vel+a.ctl+a.brk)/3, d=q-par; st.d=d; st.dPit=d;
     /* 表現係數:投得好給滿局數,投爛減少出賽(比照野手) */
@@ -96,13 +108,13 @@ export function simSeason(lv){
       /* 二刀流砍的是「先發場次」，不是每場局數:真實世界是六人輪值多休一天，
          場次少、每場長度正常。砍 ipg 會讓他看起來像每場被早換的爛投手。 */
       const gs=Math.round(clamp(20+(a.sta-40)*0.18,10,30)*spLoad(lv)*f*perfF*(0.94+R()*0.08)*(TW?share.pit:1));
-      st.GP=Math.max(1,gs);
+      st[gK]=Math.max(1,gs);
       /* IP/GS:聯盟平均~5.0、優質先發5.2-6.0、工作馬6.1-6.5;由 d 值(綜合實力)決定,控球差略減 */
       const ipg=clamp(5.0+d*0.05+(a.sta-50)*0.012+(a.ctl-par)*0.006+N0(0.12),4.8,6.5);
-      st.IP=+(st.GP*ipg).toFixed(1);
+      st.IP=+(st[gK]*ipg).toFixed(1);
     }else{
-      st.GP=Math.max(1,Math.round(clamp(45+(Math.min(a.sta,60)-40)*0.3,25,68)*f*perfF*(0.94+R()*0.08)*(TW?share.pit:1))); /* 高體力後援:出賽數貢獻以 sta60 封頂,不會貼近先發工作量 */
-      st.IP=+(st.GP*1.05).toFixed(1);
+      st[gK]=Math.max(1,Math.round(clamp(45+(Math.min(a.sta,60)-40)*0.3,25,68)*f*perfF*(0.94+R()*0.08)*(TW?share.pit:1))); /* 高體力後援:出賽數貢獻以 sta60 封頂,不會貼近先發工作量 */
+      st.IP=+(st[gK]*1.05).toFixed(1);
     }
     st.era=clamp(4.32-d*0.17+N0(0.35),1.40,9.90);
     st.ER=Math.round(st.era*st.IP/9);
@@ -110,30 +122,30 @@ export function simSeason(lv){
     st.SO=Math.round(st.IP/9*k9);
     /* 保送:控球決定(BB/9);被安打:d 值決定;WHIP=(H+BB)/IP */
     const bb9=clamp(4.6-(a.ctl-par)*0.13+N0(0.4),1.2,7.5);
-    st.BB=Math.round(st.IP/9*bb9);
+    st[bbK]=Math.round(st.IP/9*bb9);
     const h9=clamp(9.2-d*0.16+N0(0.5),5.0,13.5);
-    st.H=Math.round(st.IP/9*h9);
+    st[hK]=Math.round(st.IP/9*h9);
     st.WHIP=st.IP>0?+(baseballWHIP(st)||0).toFixed(2):0;
     if(isSP()){
-      const dec=Math.round(st.GP*0.72), wp=clamp(0.50+d*0.014+N0(0.05),0.15,0.85);
+      const dec=Math.round(st[gK]*0.72), wp=clamp(0.50+d*0.014+N0(0.05),0.15,0.85);
       st.W=Math.round(dec*wp); st.L=dec-st.W;
     }else if(S.role==='CL'){
       /* 終結者:救援以出賽數為基礎(轉化率隨表現 d),SV 天生 <= G;每場最多 1 救援 */
       const svRate=clamp(0.55+d*0.02,0.35,0.82);            /* 救援轉化率:35%~82% */
-      st.SV=Math.min(st.GP, Math.round(st.GP*svRate));       /* 不可超過登板數 */
-      st.HLD=Math.min(Math.max(0,st.GP-st.SV), Math.round(st.GP*0.12)); /* 非救援登板的中繼 */
-      const dec=Math.max(1,Math.round(st.GP*0.14)); st.W=Math.round(dec*clamp(0.45+d*0.02,0.3,0.7)); st.L=Math.max(0,dec-st.W);
+      st.SV=Math.min(st[gK], Math.round(st[gK]*svRate));       /* 不可超過登板數 */
+      st.HLD=Math.min(Math.max(0,st[gK]-st.SV), Math.round(st[gK]*0.12)); /* 非救援登板的中繼 */
+      const dec=Math.max(1,Math.round(st[gK]*0.14)); st.W=Math.round(dec*clamp(0.45+d*0.02,0.3,0.7)); st.L=Math.max(0,dec-st.W);
     }else{ /* 中繼:中繼成功 HLD 以出賽數為基礎 */
       const hldRate=clamp(0.45+d*0.02,0.25,0.72);
-      st.HLD=Math.min(st.GP, Math.round(st.GP*hldRate));     /* 不可超過登板數 */
-      st.SV=Math.min(Math.max(0,st.GP-st.HLD), chance(25)?ri(1,5):0);
-      const dec=Math.max(1,Math.round(st.GP*0.14)); st.W=Math.round(dec*clamp(0.5+d*0.015,0.35,0.7)); st.L=Math.max(0,dec-st.W);
+      st.HLD=Math.min(st[gK], Math.round(st[gK]*hldRate));     /* 不可超過登板數 */
+      st.SV=Math.min(Math.max(0,st[gK]-st.HLD), chance(25)?ri(1,5):0);
+      const dec=Math.max(1,Math.round(st[gK]*0.14)); st.W=Math.round(dec*clamp(0.5+d*0.015,0.35,0.7)); st.L=Math.max(0,dec-st.W);
     }
     /* 物理約束:每場最多一種結果 → 救援占比<=85%、勝+敗+救援+中繼 總和不可超過出賽數 */
     if(!isSP()){
-      st.SV=Math.min(st.SV||0, Math.floor(st.GP*0.85));
-      st.HLD=Math.min(st.HLD||0, Math.max(0,st.GP-st.SV));
-      const decCap=Math.max(0,st.GP-st.SV-st.HLD);
+      st.SV=Math.min(st.SV||0, Math.floor(st[gK]*0.85));
+      st.HLD=Math.min(st.HLD||0, Math.max(0,st[gK]-st.SV));
+      const decCap=Math.max(0,st[gK]-st.SV-st.HLD);
       if((st.W+st.L)>decCap){ st.W=Math.min(st.W,decCap); st.L=Math.max(0,decCap-st.W); }
     }
   }
@@ -189,7 +201,8 @@ export function applySeasonForm(st,lv){
     /* 投手:三振/勝場隨倍率;被安打與自責分反向(生涯年變少、低潮變多);SV/HLD 依倍率但不超過出賽數 */
     st.SO=Math.round(st.SO*m);
     st.W=Math.round(st.W*m); if(st.L!=null)st.L=Math.max(0,Math.round(st.L/(m||1)));
-    st.H=Math.max(0,Math.round(st.H/m)); st.ER=Math.max(0,Math.round(st.ER/m));
+    const pk=Number.isFinite(st.pH)?'pH':'H';
+    st[pk]=Math.max(0,Math.round(st[pk]/m)); st.ER=Math.max(0,Math.round(st.ER/m));
     st.era=st.IP>0?+(baseballERA(st)||0).toFixed(2):st.era;
     st.WHIP=st.IP>0?+(baseballWHIP(st)||0).toFixed(2):st.WHIP;
     const gp=pitG(st);
@@ -350,7 +363,8 @@ export function normalizePitchingStats(st,lv){
   const g=clamp(Math.round(pitG(st)||0),0,maxG);
   if(twoWay)st.GP=g; else st.G=g;
   st.IP=normalizeIP(clamp(Number(st.IP)||0,0,g*9));
-  ['H','BB','SO','ER','W','L','SV','HLD'].forEach(k=>st[k]=Math.max(0,Math.round(st[k]||0)));
+  (twoWay?['pH','pBB']:['H','BB']).concat(['SO','ER','W','L','SV','HLD'])
+    .forEach(k=>st[k]=Math.max(0,Math.round(st[k]||0)));
   if(isSP()){
     st.SV=0; st.HLD=0;
     const decCap=g;
@@ -381,6 +395,7 @@ export function accStat(bucket,st){
     if(!t.DPG)t.DPG={}; t.DPG[dp]=(t.DPG[dp]||0)+(st.G||0); }
   if((S.pos==='P'||S.pos==='TW')&&S.role){ S.roleYears[S.role]=(S.roleYears[S.role]||0)+1; }
   if(Number.isFinite(st.GP))t.GP=(t.GP||0)+st.GP;
+  if(Number.isFinite(st.pH)){ t.pH=(t.pH||0)+st.pH; t.pBB=(t.pBB||0)+(st.pBB||0); }
   if(S.pos==='TW')S.twSeasons=(S.twSeasons||0)+1;   /* 真的以二刀流身分打完的球季數 */
   ['G','PA','AB','H','HR','RBI','SB','BB','W','L','SV','HLD','SO','ER'].forEach(k=>t[k]+=(st[k]||0));
   t.DEF+=(st.DEF||0);
@@ -448,19 +463,25 @@ export function proSeason(){
   if(S.pendStat!==0&&S.seasonFactor>0){
     /* 【修正】狀態火燙的加成，必須依照該季實際出賽的比例（seasonFactor）進行打折 */
     const p = S.pendStat * S.seasonFactor;
-    if(p>0&&S.pos==='P'){
+    /* 二刀流兩側都要吃到火燙／低潮。原本寫成 if(投手)…else if(打者)…，
+       二刀流會落進打者那一支，投球側整季的加成與折損通通不見。
+       登板數欄位同樣要走 pitG()/gK——直接讀 st.G 會把打擊出賽當成登板數。 */
+    const TWs=S.pos==='TW', gK=TWs?'GP':'G';
+    const pitSide=S.pos==='P'||TWs, batSide=S.pos!=='P';
+    if(p>0&&pitSide){
       /* 狀態火燙=教練重用:後援先加出賽(不超過場次上限),再加內容;物理約束重夾 */
-      if(!isSP()){ const reliefCap=Math.min(68,LV[seasonLv].g); const addG=Math.min(Math.max(0,reliefCap-st.G),Math.round(p*1.2)); st.G+=addG; st.IP=+(st.IP+addG*1.05).toFixed(1); }
+      if(!isSP()){ const reliefCap=Math.min(68,LV[seasonLv].g); const addG=Math.min(Math.max(0,reliefCap-pitG(st)),Math.round(p*1.2)); st[gK]=pitG(st)+addG; st.IP=+(st.IP+addG*1.05).toFixed(1); }
       st.SO+=Math.round(p*8); st.IP=+(st.IP+p*4).toFixed(1);
       if(isSP())st.W+=Math.round(p*0.4); else st.SV+=Math.round(p*0.6);
       st.era=st.IP>0?clamp(st.era-p*0.05,1.40,9.90):st.era; st.ER=Math.round(st.era*st.IP/9);
       if(!isSP()){ /* 救援/勝敗不可超過出賽數(物理約束) */
-        st.SV=Math.min(st.SV||0,Math.floor(st.G*0.85));
-        st.HLD=Math.min(st.HLD||0,Math.max(0,st.G-st.SV));
-        const decCap=Math.max(0,st.G-st.SV-st.HLD);
+        const gp=pitG(st);
+        st.SV=Math.min(st.SV||0,Math.floor(gp*0.85));
+        st.HLD=Math.min(st.HLD||0,Math.max(0,gp-st.SV));
+        const decCap=Math.max(0,gp-st.SV-st.HLD);
         if((st.W+st.L)>decCap){ st.W=Math.min(st.W,decCap); st.L=Math.max(0,decCap-st.W); }
       } }
-    else if(p>0){ const Lg=LV[S.lv];
+    if(p>0&&batSide){ const Lg=LV[S.lv];
       /* 狀態火燙=教練重用:先轉為上場機會(G/PA 連動,不超過聯盟場次),打擊內容同步升溫 */
       const addG=Math.min(Math.max(0,(Lg.g||120)-st.G), Math.round(p*1.5));
       const addPA=Math.round(addG*4.25), addAB=Math.round(addPA*0.9);
@@ -470,14 +491,15 @@ export function proSeason(){
       const addHR=Math.min(addH, Math.round(p*1.2));
       st.H+=addH; st.HR+=addHR; st.RBI+=Math.round(addHR*2.1+(addH-addHR)*0.3);
       st.avg=st.AB?st.H/st.AB:0; }
-    else if(S.pos==='P'){
+    if(p<0&&pitSide){
       const q=Math.abs(p);
       st.SO=Math.max(0,st.SO-Math.round(q*6));
       st.W=Math.max(0,st.W-Math.round(q*.3));
       if(!isSP())st.SV=Math.max(0,(st.SV||0)-Math.round(q*.4));
       st.era=st.IP>0?clamp(st.era+q*.08,1.40,9.90):st.era;
       st.ER=Math.round(st.era*st.IP/9);
-    } else {
+    }
+    if(p<0&&batSide){
       const q=Math.abs(p), loseH=Math.min(st.H,Math.round(q*2));
       st.H-=loseH;
       st.HR=Math.min(st.H,Math.max(0,st.HR-Math.round(q*.5)));
