@@ -115,30 +115,37 @@ function bindPosSeg(){
   });
 }
 bindPosSeg();
-/* 二刀流入口:標題連點 7 下。刻意不寫 localStorage——重整頁面即取消(見 docs/twoway-design.md §6)。
-   解鎖後守位選單只剩「二刀流」，不能改選其他守位:七下是一條給二刀流的捷徑，
-   不是拿來刷天才給純投手／純野手用的後門。 */
+/* 二刀流入口:標題連點 7 下開啟，再連點 7 下關掉(也可以直接重整——刻意不寫 localStorage，
+   見 docs/twoway-design.md §6)。開啟時守位選單只剩「二刀流」，不能改選其他守位:
+   七下是一條給二刀流的捷徑，不是拿來刷天才給純投手／純野手用的後門。 */
 (()=>{
-  const logo=$('logo-tap'); if(!logo)return;
-  let taps=0,last=0;
+  const logo=$('logo-tap'), seg=$('seg-pos'); if(!logo||!seg)return;
+  const segHTML=seg.innerHTML;                 /* 關掉時原樣還原四顆守位鈕 */
+  let taps=0,last=0,prevPos=selPos;
   /* 不改 cursor——這是彩蛋，不該讓標題看起來可以點。只擋掉連點造成的文字反白。 */
   logo.style.userSelect='none'; logo.style.webkitUserSelect='none';
+  const hintOff=()=>{ const h=document.getElementById('tw-hint'); if(h)h.remove(); };
+  const hintOn=()=>{
+    const field=seg.closest('.field'); if(!field||document.getElementById('tw-hint'))return;
+    const hint=document.createElement('p');
+    hint.id='tw-hint'; hint.className='seed-hint';
+    hint.innerHTML='投打兼修。高中三年會覺醒天才，訓練骰保底五顆——但任一側跟不上層級水準就會被強制收斂成單刀，'+
+      '投在另一側的點數不退還，天才也會一併失去。<b>再連點七下標題即可取消。</b>';
+    field.appendChild(hint);
+  };
   logo.addEventListener('click',()=>{
     const now=Date.now();
     taps=(now-last>1500)?1:taps+1; last=now;   /* 中斷超過 1.5 秒就重數，避免誤觸累積 */
-    if(taps<7||selPos==='TW')return;
-    taps=0; selPos='TW';
-    const seg=$('seg-pos'); if(!seg)return;
-    seg.innerHTML='<button data-v="TW" class="on">二刀流</button>';
-    bindPosSeg();
-    const field=seg.closest('.field');
-    if(field&&!document.getElementById('tw-hint')){
-      const hint=document.createElement('p');
-      hint.id='tw-hint'; hint.className='seed-hint';
-      hint.innerHTML='投打兼修。高中三年會覺醒天才，訓練骰保底五顆——但任一側跟不上層級水準就會被強制收斂成單刀，'+
-        '投在另一側的點數不退還，天才也會一併失去。<b>重新整理即可取消。</b>';
-      field.appendChild(hint);
+    if(taps<7)return;
+    taps=0;
+    if(selPos==='TW'){                          /* 再七下:還原成原本選的守位 */
+      selPos=prevPos; seg.innerHTML=segHTML; bindPosSeg();
+      seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.v===selPos));
+      hintOff(); return;
     }
+    prevPos=selPos; selPos='TW';
+    seg.innerHTML='<button data-v="TW" class="on">二刀流</button>';
+    bindPosSeg(); hintOn();
   });
 })();
 $('btn-start').onclick=()=>{
