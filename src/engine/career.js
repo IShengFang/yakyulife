@@ -63,11 +63,26 @@ export function hitterCareerScore(st,bucket){
   const base=st.H+st.HR*3+st.SB*0.8+st.RBI*0.5+st.BB*0.3+(st.DEF||0)*6+positionScore(st,bucket);
   return base*hitterQualityFactor(st)*0.67;
 }
+/* 這一段履歷算不算二刀流，看的是他「實際打出來的東西」——同一個聯盟裡既有登板也有打席
+   ——而不是退休當下的 S.pos。原因是模擬量到的：二刀流的強制轉回中位發生在 39 歲、
+   已經打了 19 個二刀流球季之後（89.5% 的人會在生涯尾聲被收斂成單刀）。
+   用 S.pos 判斷的話，那十九年會在結算當下被整段當成純打者計分。
+   單刀投手沒有打席、單刀野手沒有登板，所以這個判斷不會誤傷他們。 */
+export function isTwoWayCareer(st){ return !!(st&&(st.GP||0)>0&&(st.PA||0)>0&&(st.IP||0)>0); }
 export function careerScore(st,bucket){
   if(S.pos==='P')return pitcherCareerScore(st,bucket);
+  /* 二刀流:兩份產出都是他真的打出來的，所以兩邊相加。會不會過強不是靠這裡壓，
+     而是靠 LEAGUE_K.TW 與 HOF_TH_K.TW 這兩個校準常數——尺歸尺、分歸分。
+     打擊側裡的 positionScore 已經含指定打擊的 −14／162 場，那一刀在這裡挨；
+     投球側完全不受影響，所以不會被同一件事罰兩次(posTierK 對二刀流也回 1)。 */
+  if(isTwoWayCareer(st))return pitcherCareerScore(st,bucket)+hitterCareerScore(st,bucket);
   return hitterCareerScore(st,bucket);
 }
 export function primaryPos(){ /* 生涯主守位:過半→該位;無過半→工具人/搖擺人(年數降序) */
+  if(S.pos==='TW'||(S.twSeasons||0)>0){
+    const ry=S.roleYears||{}, es=Object.entries(ry).sort((a,b)=>b[1]-a[1]);
+    return '二刀流'+(es.length?`（${{SP:'先發',MR:'中繼',CL:'終結者'}[es[0][0]]||''}／指定打擊）`:'');
+  }
   if(S.pos==='P'){
     const ry=S.roleYears||{}; const tot=Object.values(ry).reduce((a,b)=>a+b,0);
     if(!tot)return roleName3(S.role);
@@ -127,7 +142,23 @@ export function honorScore(bucket){
     years.get(m[1]).push(award);
   });
   let sc=0;
+  /* 二刀流同年可能既是最佳投手又是最佳打者;原本的「同年只取最高一項」會吃掉一座。
+     年度MVP 是投打共用的一座，只能算一次，所以拿它跟「投球側＋打擊側」比大小，
+     不是三者相加。 */
+  const twYear=awards=>{
+    const pitMajor=awards.some(a=>/投手三冠王/.test(a))?700:awards.some(a=>/最佳投手|賽揚/.test(a))?460:0;
+    const batMajor=awards.some(a=>/打擊三冠王/.test(a))?700:awards.some(a=>/最佳打者/.test(a))?460:0;
+    const mvp=awards.some(a=>/年度MVP/.test(a))?520:0;
+    const nP=awards.filter(a=>/(勝投王|防禦率王|三振王|救援王|中繼王)$/.test(a)).length;
+    const nB=awards.filter(a=>/(打擊王|全壘打王|盜壘王|打點王|上壘王)$/.test(a)).length;
+    return Math.max(mvp,Math.max(pitMajor,Math.min(200,nP*100))+Math.max(batMajor,Math.min(200,nB*100)));
+  };
+  const twCareer=isTwoWayCareer(S.stats[bucket]);
   years.forEach(awards=>{
+    if(twCareer){
+      const fieldingTW=awards.some(a=>/守備聖經/.test(a))?250:awards.some(a=>/金手套/.test(a))?100:0;
+      sc+=twYear(awards)+fieldingTW; return;
+    }
     /* 同年度的大獎只取最高層級；三冠王已包含其構成獎項，不重複加總。 */
     const major=awards.some(a=>/投手三冠王|打擊三冠王/.test(a))?700
       :awards.some(a=>/年度MVP/.test(a))?520
@@ -147,7 +178,9 @@ export function honorScore(bucket){
    用 DPG 而非「主守位」，所以捕手蹲十年再轉一壘的球員會拿到兩者的混合標準，
    不會因為最後幾年移防就整段生涯改用另一把尺。 */
 export function posTierK(st,bucket){
-  if(S.pos==='P'||!st||!st.DPG)return 1;
+  /* 二刀流回 1:他的守位調整已經在打擊側的 positionScore 裡扣過一次，
+     這裡再乘 DH 的 1.13 就是同一件事罰兩次。二刀流的門檻位移集中在 HOF_TH_K.TW。 */
+  if(S.pos==='P'||isTwoWayCareer(st)||!st||!st.DPG)return 1;
   let g=0,acc=0;
   Object.entries(st.DPG).forEach(([dp,games])=>{
     const n=Math.max(0,games||0); if(!n)return;
@@ -183,7 +216,7 @@ export function tierOf(bucket){
   const hs=honorScore(bucket);
   /* 生涯評價折算依「這個聯盟這段生涯的實際角色」判斷，不是看目前角色：
      救援數占推估出賽數四成以上視為終結者型生涯，套用終結者專屬折算值。 */
-  const posKey=S.pos!=='P'?'H':((st.SV||0)>=(st.IP||0)/1.05*0.4?'CL':'P');
+  const posKey=isTwoWayCareer(st)?'TW':(S.pos!=='P'?'H':((st.SV||0)>=(st.IP||0)/1.05*0.4?'CL':'P'));
   /* [Kbase,Khonor]:數據累積分與獎項分分開折算(兩者的聯盟差異性質相反,詳見 economy.js) */
   const k=((LEAGUE_K[bucket]||{})[posKey])||[1,1];
   const sc=careerScore(st,bucket)*k[0]+hs.sc*k[1],th=TIER_TH[bucket];
@@ -232,7 +265,9 @@ export function careerMilestones(){
   const out=[];
   (S.hofInfo||[]).forEach(h=>out.push(`${h.lg}名人堂｜第 ${h.yr} 年入選｜得票率 ${h.pct}%`));
   const leagues=['MLB','NPB','CPBL'];
-  const defs=S.pos==='P'?MILESTONE_DEF.pit:MILESTONE_DEF.bat;
+  /* 二刀流兩邊的里程碑都要列(勝場、三振、局數 ＋ 安打、全壘打、打點…)。 */
+  const defs=(S.pos==='TW'||(S.twSeasons||0)>0)?MILESTONE_DEF.pit.concat(MILESTONE_DEF.bat)
+    :S.pos==='P'?MILESTONE_DEF.pit:MILESTONE_DEF.bat;
   const played=leagues.filter(b=>{const st=S.stats[b];return st&&((st.yr||0)>0||(st.G||0)>0||(st.PA||0)>0||(st.IP||0)>0);});
   const sum={}; defs.forEach(([key])=>sum[key]=0);
   played.forEach(b=>defs.forEach(([key])=>sum[key]+=S.stats[b][key]||0));

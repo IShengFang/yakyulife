@@ -381,6 +381,7 @@ export function accStat(bucket,st){
     if(!t.DPG)t.DPG={}; t.DPG[dp]=(t.DPG[dp]||0)+(st.G||0); }
   if((S.pos==='P'||S.pos==='TW')&&S.role){ S.roleYears[S.role]=(S.roleYears[S.role]||0)+1; }
   if(Number.isFinite(st.GP))t.GP=(t.GP||0)+st.GP;
+  if(S.pos==='TW')S.twSeasons=(S.twSeasons||0)+1;   /* 真的以二刀流身分打完的球季數 */
   ['G','PA','AB','H','HR','RBI','SB','BB','W','L','SV','HLD','SO','ER'].forEach(k=>t[k]+=(st[k]||0));
   t.DEF+=(st.DEF||0);
   t.IP=ipFromOuts(outsFromIP(t.IP)+outsFromIP(st.IP));

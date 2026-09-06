@@ -30,6 +30,7 @@ export function twoWayAudit(){
   if(p>=bar&&b>=bar)return false;
   const keepPit=p>=b;
   const lost=keepPit?'打擊':'投球';
+  S.twFellAge=S.age; S.twFellLv=S.lv;
   S.pos=keepPit?'P':'OF';
   S.twFell=keepPit?'pit':'bat';
   if(keepPit){
@@ -48,7 +49,14 @@ export function twoWayAudit(){
   /* 七下路線的天才是系統送的，失去二刀流身分就一併收回;自己擲出五顆 6 的不拔。
      S.six 必須同時歸零——解鎖條件是 S.six>=5 && !genius && age<22，
      不歸零的話下一次擲骰就會立刻再解鎖一次，等於白拔。 */
-  if(S.twOrigin==='tap'&&S.traits.genius){
+  /* 只有「還沒真正打過二刀流就崩掉」才連坐拔天才——七下是要擋刷天才的人，
+     不是要罰一個打了十九年二刀流、四十歲才停止投球的球員。
+     模擬佐證(各 600／3000 段完整生涯)：
+       故意只練投球側的刷天才玩法 100% 在 5 季內崩掉，轉回年齡中位 19 歲；
+       正常玩的二刀流 0.0% 在 5 季內崩掉，轉回年齡中位 39 歲、已打 19 個二刀流球季。
+     所以 5 季這條線抓得到 100% 的刷天才、誤傷 0% 的正常玩家。 */
+  const TW_ESTABLISHED=5;
+  if(S.twOrigin==='tap'&&S.traits.genius&&(S.twSeasons||0)<TW_ESTABLISHED){
     removeTrait('genius','天才'); S.six=0;
     card('bad','天才褪去',
       '那份與生俱來的手感，好像是為了二刀流才借給你的。當這條路走不下去，它也一起離開了——'+
@@ -127,7 +135,7 @@ export function phasePre(){
     }
     
     card('','季初特訓',msg);
-    if(S.six>=5&&!S.traits.genius&&S.age<22){ S.traits.genius=true;
+    if(S.six>=5&&!S.traits.genius&&S.age<22){ S.traits.genius=true; S.geniusEver=true;
       {
       const exDef=S.pos==='C'?['rng','fld','arm','cat']:[];
       /* 潛力 70 以上已是高天賦，不再吃掉重新評估名額；最高只會由 69 提升至 79。 */
