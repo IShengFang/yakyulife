@@ -42,9 +42,22 @@ export function phasePre(){
     let n=S.skipMid?2:(()=>{const r=R();return r<0.35?3:r<0.75?4:r<0.95?5:6;})();
     if(S.traits.distract&&!S.skipMid)n=Math.max(2,n-1); /* 外務纏身 */
     if(S.traits.academy&&!S.skipMid&&chance(35))n++; /* 學院派:期望值略升 */
+    /* 二刀流要同時養兩套工具,顆數保底 5(不是固定 5——高顆數的運氣照樣吃得到)。
+       跌回單刀就沒有這一條,所以直接綁 S.pos 即可,不需要常駐旗標。復健年的 2 顆不在此限。 */
+    if(S.pos==='TW'&&!S.skipMid)n=Math.max(n,5);
     
+    /* 七下起手的二刀流:高中三年以「累積目標」保送五顆 6(高一 2、高二 4、高三 5)。
+       每季只補到當季目標,其餘骰子照常擲——自然骰出的 6 會被算進去,下一季要補的就變少,
+       運氣好提早湊滿就提早解鎖(這是允許的)。解鎖後 genius 為真、S.six 停止累加,
+       這段就自動失效,不需要額外的關閉條件。 */
+    let forced=new Set();
+    if(S.twOrigin==='tap'&&!S.traits.genius&&S.stage==='HS'&&!S.skipMid){
+      const target=[2,4,5][clamp((S.stageYr||1)-1,0,2)];
+      let need=clamp(target-S.six,0,n);
+      while(forced.size<need)forced.add(Math.floor(R()*n));
+    }
     const dice=[]; let newSix=0;
-    for(let i=0;i<n;i++){ const v=S.traits.genius?ri(4,6):S.traits.late?ri(3,6):ri(1,6); dice.push(v);
+    for(let i=0;i<n;i++){ const v=forced.has(i)?6:(S.traits.genius?ri(4,6):S.traits.late?ri(3,6):ri(1,6)); dice.push(v);
       if(v===6&&S.age<22&&!S.traits.genius){S.six++;newSix++;} }
       
     let msg=`自主訓練擲出 <b class="hl">${n}</b> 顆骰。`;
@@ -80,7 +93,7 @@ export function phasePre(){
       card('gold','隱藏素質解鎖：天才','22 歲前五度擲出高標值！從今以後，每一顆訓練骰<b class="hl">永久固定 4 點以上</b>，事件卡好結果機率提升至 <b class="hl">70%</b>。'+(bl.length?`天賦覺醒，潛能重新被評估：${bl.join('、')}。`:'')+'天賦，是藏不住的。');
       board(1);
     } }
-    choose('分配訓練成果',[{t:'<i class="ph-bold ph-gear" aria-hidden="true"></i>開始分配',s:`${dice.length} 顆骰`,main:true,f:()=>dposReview(()=>allocUI({dice},'分配訓練成果（點骰套用｜球探量表：'+(S.pos==='P'?'60/70/75':'70/75')+' 以上成長遞減）',()=>nextStep()))}]);
+    choose('分配訓練成果',[{t:'<i class="ph-bold ph-gear" aria-hidden="true"></i>開始分配',s:`${dice.length} 顆骰`,main:true,f:()=>dposReview(()=>allocUI({dice},'分配訓練成果（點骰套用｜球探量表：'+(S.pos==='P'?'60/70/75':S.pos==='TW'?'球威 60/70/75｜其餘 70/75':'70/75')+' 以上成長遞減）',()=>nextStep()))}]);
   };
   /* 投手開季：投球強度(續航+TJ 量表) */
   const preAsk=afterAsk;

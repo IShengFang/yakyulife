@@ -196,7 +196,9 @@ function affiliationHTML(){
 }
 /* 守位晶片(實底)＋稱號晶片(金描邊) */
 function chipsHTML(){
-  const pos=(S.dpos?DPN[S.dpos]:POSN[S.pos])+(S.role?'・'+roleN(S.role):'');
+  /* 二刀流的 dpos 永遠是 DH,直接印會變成「指定打擊・先發」,把身分蓋掉了。 */
+  const posN=S.pos==='TW'?POSN.TW:(S.dpos?DPN[S.dpos]:POSN[S.pos]);
+  const pos=posN+(S.role?'・'+roleN(S.role):'');
   const typ=playerType()+(S.traits.genius?' ★':'');
   return `<span class="bd-chip pos">${pos}</span><span class="bd-chip typ">${typ}</span>`;
 }

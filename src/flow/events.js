@@ -36,7 +36,9 @@ export function evOdds(){ /* 事件卡成功率:顯示與擲骰共用同一來�
 export function eventEligible(ev,state){
   const s=state||S;
   if(ev.maxAge!==undefined&&s.age>ev.maxAge)return false;
-  if(ev.role==='P'&&s.pos!=='P')return false;
+  /* 二刀流吃得到投手卡;B(內外野手)與 F(所有非投手)本來就不排除 TW。 */
+  if(ev.role==='P'&&s.pos!=='P'&&s.pos!=='TW')return false;
+  if(ev.role==='TW'&&s.pos!=='TW')return false;
   if(ev.role==='C'&&s.pos!=='C')return false;
   if(ev.role==='B'&&(s.pos==='P'||s.pos==='C'))return false;
   /* F=野手(所有非投手,含捕手)。B 沿用舊定義(內外野手,捕手另有專屬卡池)，但像跑壘這種

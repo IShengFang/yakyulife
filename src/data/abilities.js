@@ -1,7 +1,13 @@
 /* ---------- 能力與守位資料 ---------- */
 export const ABL={sta:'體力',vel:'球速',ctl:'控球',brk:'變化球',con:'Contact',pow:'力量',spd:'速度',eye:'選球',rng:'守備範圍',fld:'接球',arm:'臂力',cat:'配球'};
-export const POS_AB={P:['sta','vel','ctl','brk'],C:['sta','con','pow','spd','eye','rng','fld','arm','cat'],IF:['sta','con','pow','spd','eye','rng','fld','arm'],OF:['sta','con','pow','spd','eye','rng','fld','arm']};
-export const POSN={P:'投手',C:'捕手',IF:'內野手',OF:'外野手'};
+export const POS_AB={P:['sta','vel','ctl','brk'],C:['sta','con','pow','spd','eye','rng','fld','arm','cat'],IF:['sta','con','pow','spd','eye','rng','fld','arm'],OF:['sta','con','pow','spd','eye','rng','fld','arm'],
+ /* 二刀流：體力＋球威三項＋打擊四項。沒有 rng/fld/arm/cat——不投球的日子固定 DH，
+    整套守備系統（守位門檻、金手套、守備聖經、移防會議）都不適用。 */
+ TW:['sta','vel','ctl','brk','con','pow','spd','eye']};
+export const POSN={P:'投手',C:'捕手',IF:'內野手',OF:'外野手',TW:'二刀流'};
+/* 球威三項：成本曲線最陡的那一組。判定成本時要看「能力鍵」而不是守位——
+   二刀流同時擁有兩種曲線的鍵，用守位判定會讓他的打擊也吃投手的成本。 */
+export const PITCH_TOOLS=['vel','ctl','brk'];
 /* ---------- 守位系統 ---------- */
 export const DPN={SS:'游擊手','2B':'二壘手','3B':'三壘手','1B':'一壘手',
  CF:'中外野手',RF:'右外野手',LF:'左外野手',DH:'指定打擊',C:'捕手'};

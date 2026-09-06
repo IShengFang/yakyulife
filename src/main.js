@@ -108,10 +108,39 @@ try{
 }catch(e){}
 $('seed-show').value=SEED;
 $('seed-re').onclick=e=>{e.preventDefault();setSeed(Math.random().toString(36).slice(2,10));$('seed-show').value=SEED;};
-document.querySelectorAll('#seg-pos button').forEach(b=>b.onclick=()=>{
-  document.querySelectorAll('#seg-pos button').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on'); selPos=b.dataset.v;
-});
+function bindPosSeg(){
+  document.querySelectorAll('#seg-pos button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#seg-pos button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); selPos=b.dataset.v;
+  });
+}
+bindPosSeg();
+/* 二刀流入口:標題連點 7 下。刻意不寫 localStorage——重整頁面即取消(見 docs/twoway-design.md §6)。
+   解鎖後守位選單只剩「二刀流」，不能改選其他守位:七下是一條給二刀流的捷徑，
+   不是拿來刷天才給純投手／純野手用的後門。 */
+(()=>{
+  const logo=$('logo-tap'); if(!logo)return;
+  let taps=0,last=0;
+  /* 不改 cursor——這是彩蛋，不該讓標題看起來可以點。只擋掉連點造成的文字反白。 */
+  logo.style.userSelect='none'; logo.style.webkitUserSelect='none';
+  logo.addEventListener('click',()=>{
+    const now=Date.now();
+    taps=(now-last>1500)?1:taps+1; last=now;   /* 中斷超過 1.5 秒就重數，避免誤觸累積 */
+    if(taps<7||selPos==='TW')return;
+    taps=0; selPos='TW';
+    const seg=$('seg-pos'); if(!seg)return;
+    seg.innerHTML='<button data-v="TW" class="on">二刀流</button>';
+    bindPosSeg();
+    const field=seg.closest('.field');
+    if(field&&!document.getElementById('tw-hint')){
+      const hint=document.createElement('p');
+      hint.id='tw-hint'; hint.className='seed-hint';
+      hint.innerHTML='投打兼修。高中三年會覺醒天才，訓練骰保底五顆——但任一側跟不上層級水準就會被強制收斂成單刀，'+
+        '投在另一側的點數不退還，天才也會一併失去。<b>重新整理即可取消。</b>';
+      field.appendChild(hint);
+    }
+  });
+})();
 $('btn-start').onclick=()=>{
   const sv=$('seed-show').value.trim(); if(sv)setSeed(sv); /* 玩家可直接輸入流水碼 */
   history.replaceState(null,'','?seed='+encodeURIComponent(SEED));
