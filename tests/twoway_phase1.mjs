@@ -83,7 +83,7 @@ try{
   assert.equal(unit.collapsed.ovr,Math.round(Math.max(unit.collapsed.p,unit.collapsed.b)));
   assert.deepEqual(unit.elig,{P:true,B:true,F:true,C:false,TW:true,TWforPitcher:false});
 
-  /* ── ② 實機：七下入口 → 高中三年保送五顆 6 → 天才解鎖 ── */
+  /* ── ② 實機：七下入口 → 高中三年保送 TW_SIX_GUARANTEED 顆 6 ── */
   const page2=await browser.newPage();
   page2.on('pageerror',error=>errors.push(error.message));
   await page2.goto(`${url}?seed=twoway-walk`,{waitUntil:'domcontentloaded'});
@@ -94,6 +94,7 @@ try{
 
   const walk=await page2.evaluate(async()=>{
     const state=await import('./src/core/state.js?v=1.5.12');
+    const {TW_SIX_GUARANTEED}=await import('./src/flow/phases.js?v=1.5.12');
     const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     const vis=x=>x&&x.offsetParent!==null&&!x.disabled;
     const S=state.S, years=[]; let seen=null, dice=[];
@@ -111,14 +112,19 @@ try{
       if(!btns.length){ await sleep(20); continue; }
       btns[0].click(); await sleep(0);
     }
-    return {years,dice,pos:S.pos,six:S.six,genius:S.traits.genius};
+    return {years,dice,pos:S.pos,six:S.six,genius:S.traits.genius,guaranteed:TW_SIX_GUARANTEED};
   });
 
   assert.equal(walk.pos,'TW');
   assert.ok(walk.dice.length>=3,'沒有抓到高中三年的擲骰');
   assert.ok(walk.dice.every(n=>n>=5),'二刀流的訓練骰顆數保底 5 沒有生效：'+walk.dice.join(','));
-  assert.ok(walk.six>=5,'高中三年沒有湊滿五顆 6：'+walk.six);
-  assert.equal(walk.genius,true,'高中結束時應該已經解鎖天才');
+  /* 七下只保送 TW_SIX_GUARANTEED 顆，剩下的要玩家自己擲——所以這裡不能斷言天才一定解鎖，
+     只能斷言配額真的發了。全保送會讓這條路線比母體甜太多（實測 18.1% 對 8.3%），
+     見 docs/twoway-design.md §6。 */
+  assert.ok(walk.guaranteed>=1&&walk.guaranteed<=5,'TW_SIX_GUARANTEED 超出合理範圍：'+walk.guaranteed);
+  assert.ok(walk.six>=walk.guaranteed,
+    `高中三年沒有發滿配額：拿到 ${walk.six} 顆，應至少 ${walk.guaranteed} 顆`);
+  if(walk.six>=5)assert.equal(walk.genius,true,'湊滿五顆 6 卻沒有解鎖天才');
 
   assert.equal(errors.length,0,errors.join('\n'));
   console.log(JSON.stringify({unit,walk},null,2));

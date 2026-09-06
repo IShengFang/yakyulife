@@ -18,6 +18,12 @@ import {runDraft, pathChoiceHS, pathChoiceU4, advance} from '../engine/draft.js?
 import {endGame} from '../ui/retire.js?v=1.5.12';
 /* ================= 年度流程 ================= */
 export function startYear(){ S.yearOutsideIncome=0; stepQ.length=0; stepQ.push(phasePre,phaseMid,phaseEnd); divider(`${S.year} 年 · ${S.age} 歲 · ${stageLabel()}`); tlPush(); nextStep(); }
+/* 七下保送幾顆「6」。天才需要 5 顆，保送不足的部分要玩家自己擲出來。
+   這是二刀流整條路線的難度總開關——實測(各 3000 段完整生涯，名人堂率)：
+     保送 5 顆(全保送) 18.1%　／　完全不保送 6.8%　／　單刀母體 8.3%
+   也就是說二刀流「機制本身」比母體略難，多出來的優勢全部來自保送的天才。
+   見 docs/twoway-design.md §6。 */
+export const TW_SIX_GUARANTEED=3;
 /* ---------- 二刀流資格檢查 ----------
    任一側的 ovr 低於「該層級 min − 10」就強制收斂成較好的那一側。門檻隨層級自動變嚴
    (中職一軍 31／日職一軍 40／大聯盟 46)，升上去了就得兩邊一起跟上。
@@ -106,8 +112,11 @@ export function phasePre(){
        運氣好提早湊滿就提早解鎖(這是允許的)。解鎖後 genius 為真、S.six 停止累加,
        這段就自動失效,不需要額外的關閉條件。 */
     let forced=new Set();
-    if(S.twOrigin==='tap'&&!S.traits.genius&&S.stage==='HS'&&!S.skipMid){
-      const target=[2,4,5][clamp((S.stageYr||1)-1,0,2)];
+    if(S.twOrigin==='tap'&&!S.traits.genius&&S.stage==='HS'&&!S.skipMid&&TW_SIX_GUARANTEED>0){
+      /* 高中三年的累積目標:把保送額度平均攤在三年，第三年補到滿。
+         TW_SIX_GUARANTEED=5 → [2,4,5]（全保送）；=3 → [1,2,3]（剩兩顆要自己擲）。 */
+      const yr=clamp(S.stageYr||1,1,3);
+      const target=Math.min(TW_SIX_GUARANTEED,Math.ceil(TW_SIX_GUARANTEED*yr/3));
       let need=clamp(target-S.six,0,n);
       while(forced.size<need)forced.add(Math.floor(R()*n));
     }
