@@ -24,6 +24,40 @@ export function startYear(){ S.yearOutsideIncome=0; stepQ.length=0; stepQ.push(p
    也就是說二刀流「機制本身」比母體略難，多出來的優勢全部來自保送的天才。
    見 docs/twoway-design.md §6。 */
 export const TW_SIX_GUARANTEED=3;
+/* 中途轉入二刀流時，新增那一側的起點＝現有能力平均 × 這個比例（與 ri(20,32) 取高）。
+   0 ＝完全從頭擲。見 docs/twoway-design.md §6。 */
+export const TW_CONVERT_RATIO=0.85;
+/* 0.85 是量出來的:轉入型與七下型必須一樣難，「怎麼走進來的」不該改變難度。
+   實測(收到邀請的母體，名人堂率；七下二刀流 12.2%、婉拒維持單刀 18.8%)：
+     從頭擲 6.6%　／　×0.70 7.2%　／　×0.85 11.4%　／　×1.00 14.4%
+   從頭擲會讓這個邀請變成陷阱(18.8% → 6.6%)；×1.00 則讓轉入型強過原生型，
+   方向顛倒。×0.85 讓兩個入口對齊，接受與否是一筆誠實的取捨:
+   拿生涯評價的機率換二刀流這件事本身。 */
+/* 中途轉入二刀流（觸發 B：高中解鎖天才時選擇轉入）。
+   新增的那一側能力重新擲 ri(20,32)、潛力照二刀流的分層表；原有的鍵值一律保留
+   ——包含 rng/fld/arm/cat，它們只是變成用不到，不是被沒收（決議 6／7）。 */
+export function convertToTwoWay(origin){
+  const shuffle=arr=>{ for(let i=arr.length-1;i>0;i--){const j=Math.floor(R()*(i+1));const t=arr[i];arr[i]=arr[j];arr[j]=t;} return arr; };
+  /* 新增那一側的起點:取現有能力平均的一個比例，與 ri(20,32) 取高。
+     TW_CONVERT_RATIO=0 等於「完全從頭擲」。 */
+  const cur=Object.keys(S.ab).map(k=>S.ab[k]);
+  const avg=cur.length?cur.reduce((a,b)=>a+b,0)/cur.length:26;
+  const base=Math.round(avg*TW_CONVERT_RATIO);
+  const add=(keys,tiers)=>{
+    const fresh=keys.filter(k=>!(k in S.ab));
+    fresh.forEach(k=>{ S.ab[k]=clamp(Math.max(ri(20,32),base),1,80); });
+    shuffle(fresh).forEach((k,i)=>{ S.pot[k]=tiers[Math.min(i,tiers.length-1)](); });
+    return fresh;
+  };
+  const gainedPit=add(['vel','ctl','brk'],[()=>ri(70,80),()=>ri(58,68),()=>ri(50,60)]);
+  const gainedBat=add(['con','pow','spd','eye'],[()=>ri(72,80),()=>ri(62,72),()=>ri(54,66),()=>ri(46,60)]);
+  /* 體力是二刀流的雙重門票（先發線 52、滿勤打擊線 55）。單刀的潛力表把體力丟進洗牌，
+     過半的人抽到 ri(44,54) 或 ri(46,62)——照原值轉過來的話，這個邀請對他們是陷阱。
+     所以轉入時把體力潛力墊到二刀流自己的下限。 */
+  S.pot.sta=Math.max(S.pot.sta||0,ri(60,74));
+  S.pos='TW'; S.twOrigin=origin||'genius'; S.role=null; S.dpos='DH'; S.twSeasons=0;
+  return {gainedPit,gainedBat};
+}
 /* ---------- 二刀流資格檢查 ----------
    任一側的 ovr 低於「該層級 min − 10」就強制收斂成較好的那一側。門檻隨層級自動變嚴
    (中職一軍 31／日職一軍 40／大聯盟 46)，升上去了就得兩邊一起跟上。
@@ -120,7 +154,7 @@ export function phasePre(){
       let need=clamp(target-S.six,0,n);
       while(forced.size<need)forced.add(Math.floor(R()*n));
     }
-    const dice=[]; let newSix=0;
+    const dice=[]; let newSix=0, justUnlockedGenius=false;
     for(let i=0;i<n;i++){ const v=forced.has(i)?6:(S.traits.genius?ri(4,6):S.traits.late?ri(3,6):ri(1,6)); dice.push(v);
       if(v===6&&S.age<22&&!S.traits.genius){S.six++;newSix++;} }
       
@@ -156,8 +190,30 @@ export function phasePre(){
         bl.push(`${ABL[k]} <b class="up">+5</b>（潛力上限 ${oldPot} → ${newPot}，實際 +${potGain}）`); });
       card('gold','隱藏素質解鎖：天才','22 歲前五度擲出高標值！從今以後，每一顆訓練骰<b class="hl">永久固定 4 點以上</b>，事件卡好結果機率提升至 <b class="hl">70%</b>。'+(bl.length?`天賦覺醒，潛能重新被評估：${bl.join('、')}。`:'')+'天賦，是藏不住的。');
       board(1);
+      justUnlockedGenius=true;
     } }
-    choose('分配訓練成果',[{t:'<i class="ph-bold ph-gear" aria-hidden="true"></i>開始分配',s:`${dice.length} 顆骰`,main:true,f:()=>dposReview(()=>allocUI({dice},'分配訓練成果（點骰套用｜球探量表：'+(S.pos==='P'?'60/70/75':S.pos==='TW'?'球威 60/70/75｜其餘 70/75':'70/75')+' 以上成長遞減）',()=>nextStep()))}]);
+    const toAlloc=()=>choose('分配訓練成果',[{t:'<i class="ph-bold ph-gear" aria-hidden="true"></i>開始分配',s:`${dice.length} 顆骰`,main:true,f:()=>dposReview(()=>allocUI({dice},'分配訓練成果（點骰套用｜球探量表：'+(S.pos==='P'?'60/70/75':S.pos==='TW'?'球威 60/70/75｜其餘 70/75':'70/75')+' 以上成長遞減）',()=>nextStep()))}]);
+    /* 觸發 B:高中時期解鎖天才 → 詢問要不要轉二刀流。玩家可以拒絕，拒絕就再也不問。 */
+    if(justUnlockedGenius&&S.stage==='HS'&&S.pos!=='TW'){
+      const wasP=S.pos==='P';
+      choose('<span class="ev-h">天賦覺醒 · 教練把你叫進辦公室</span>'+
+        `<small>「你這種身體，只做一半太可惜了。」他把${wasP?'球棒':'手套跟球'}放到你面前。</small>`,[
+        {t:'兩邊都要——走二刀流',main:true,
+         s:`${wasP?'重新學打擊':'重新學投球'}（從你目前水準的八成起步）｜訓練骰保底 5 顆｜任一側跟不上層級水準就會被強制收斂，投在另一側的點數不退還`,
+         f:()=>{ const g=convertToTwoWay('genius');
+           const names=k=>ABL[k];
+           card('gold','二刀流',
+             `你點了頭。從這一天起，你不再只是${wasP?'投手':'打者'}——<b class="hl">${wasP?'球棒':'投手丘'}</b>也成了你的功課。`+
+             `<br>新增能力：${g.gainedPit.concat(g.gainedBat).map(names).join('、')}（從頭練起）。`+
+             `<br>訓練骰顆數保底 <b class="hl">5 顆</b>；但只要投或打其中一側跟不上所在層級的水準，`+
+             `球團就會把你收斂回單刀，而那些年投進另一側的點數<b class="dn">沒有人會還給你</b>。`);
+           board(1); toAlloc(); }},
+        {t:`專心當${wasP?'投手':'打者'}`,s:'維持現狀。這個邀請不會再出現',
+         f:()=>{ S.twDeclined=true;
+           card('info','婉拒','你搖搖頭。把一件事做到最好，本身就已經夠難了。'); toAlloc(); }}]);
+      return;
+    }
+    toAlloc();
   };
   /* 投手開季：投球強度(續航+TJ 量表) */
   const preAsk=afterAsk;

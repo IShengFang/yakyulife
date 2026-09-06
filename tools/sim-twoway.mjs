@@ -63,6 +63,8 @@ globalThis.__autoChoose=function(title,opts){
     const mode=(typeof A.event==='function')?A.event(S):A.event;
     pick=opts[{bold:0,norm:1,safe:2}[mode]]||opts[1];
   }
+  /* 觸發 B:高中解鎖天才後的二刀流邀請。TWOFFER=accept 才接受，預設婉拒。 */
+  else if(has(title,'天賦覺醒')) pick=(process.env.TWOFFER==='accept')?mainOf(opts):opts[opts.length-1];
   else if(has(title,'請決定今年的事件組成')) pick=findT(opts,'訓練至上')||mainOf(opts);
   /* 開季投球規劃／投打配比：手臂已經在痛時，只有激進派還硬催 */
   else if(has(title,'開季投球規劃','開季投打配比')){
@@ -247,7 +249,8 @@ function onePlaythrough(pos,arch,seed,alloc,want){
     peakOvr,peakCore:+peakCore.toFixed(1),top:topLv?topLv.lv:null,
     bigInj:S.bigInj||0,tj:S.tjCount||0,retireAge:S.age,salary:S.salary||0,
     proYears:['CPBL','NPB','MLB','MINOR'].reduce((a,b)=>a+((S.stats[b]&&S.stats[b].yr)||0),0),
-    traits:Object.keys(S.traits||{}).filter(k=>S.traits[k]),geniusEver:!!S.geniusEver,REC};
+    traits:Object.keys(S.traits||{}).filter(k=>S.traits[k]),geniusEver:!!S.geniusEver,
+    twOrigin:S.twOrigin||null,twDeclined:!!S.twDeclined,REC};
 }
 
 const N=+process.env.N||400;
