@@ -358,12 +358,14 @@ encounter   * 17 ｜ P 4 ｜ B 7 ｜ C 7
 
 ## 10. 實作階段
 
-1. **能跑** — `POS_AB.TW`、`newState` 的能力／潛力產生、`ovr()` 合併、
-   `abCost` 改成看 key、配點 UI 8 列、`dposReview` 同時給 role 與 dpos。
-   驗收：建一個二刀流角色，從高一走到職業第一年不會 crash。
-2. **能玩一季** — `simSeason` 雙成績線、`seasonSalaryRating`／`seasonGrade` 合併、
-   投打比重面板、強制轉回、TJ 只停投球。
-   驗收：跑完整生涯不 crash，強制轉回會在正確的時機觸發。
+1. ~~**能跑**~~ **（完成，`3e4d0f3`）** — `POS_AB.TW`、`newState` 的能力／潛力產生、
+   `ovr()`／`ovrPit()`／`ovrBat()`、`abCost` 改成看 key、配點 UI 8 列、
+   `dposReview` 同時給 role 與 dpos、七下入口與骰子規則。測試 `tests/twoway_phase1.mjs`。
+2. ~~**能玩一季**~~ **（完成）** — `simSeason` 雙成績線（`st.GP` 分家）、
+   `seasonSalaryRating`／`seasonGrade` 拆成兩側再合併、投打配比面板、
+   TJ 倍數與只停投球的復健年、強制轉回與天才連坐。測試 `tests/twoway_phase2.mjs`。
+   **仍未做**：`intl.js` 的國際賽只會產生打擊成績；`proSeason` 的狀態火燙只加打擊側；
+   `career.js` 的生涯評價仍走打者路徑（那是第 3 階段的主題）。
 3. **能校準** — `careerScore`／`tierOf` 的 TW 常數，用模擬把名人堂率壓回錨點。
    驗收：TW 的加權名人堂率落在單刀路線的合理區間，不是支配解也不是廢棒。
 4. **能看** — 事件卡、七下觸發、結算圖年表、引退文案、二刀流稱號與標籤。

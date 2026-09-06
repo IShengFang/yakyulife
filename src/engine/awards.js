@@ -4,7 +4,7 @@ import {DPN, GLOVE_TH, GLOVE_K} from '../data/abilities.js?v=1.5.12';
 import {LV} from '../data/teams.js?v=1.5.12';
 import {card} from '../ui/dom.js?v=1.5.12';
 import {tlNote} from '../ui/timeline.js?v=1.5.12';
-import {isSP, slgOf, baseballERA} from './season.js?v=1.5.12';
+import {isSP, slgOf, baseballERA, pitG} from './season.js?v=1.5.12';
 import {isCareerScoringAward} from './award-rules.js?v=1.5.12';
 import {traitCard, removeTrait} from '../flow/events.js?v=1.5.12';
 /* 獎項機率同時有硬下限與必得上限；數值越低越好的獎項（ERA）用 lower=true。 */
@@ -33,11 +33,15 @@ export function rookieLeagueEligible(bucket,stats=S.stats){
 export function rookieWorkloadEligible(bucket,st,pos,role){
   pos=pos||(S&&S.pos); role=role||(S&&S.role);
   const games=((LV[({CPBL:'CPBL1',NPB:'NPB1',MLB:'MLB'})[bucket]]||{}).g)||120;
-  if(pos==='P'){
-    if(role==='SP')return (st.G||0)>=Math.ceil(games*.08)&&(st.IP||0)>=Math.ceil(games*.40);
-    return (st.G||0)>=Math.ceil(games*.25)&&(st.IP||0)>=Math.ceil(games*.12);
-  }
-  return (st.G||0)>=Math.ceil(games*.40)&&(st.PA||0)>=Math.ceil(games*1.50);
+  const gp=Number.isFinite(st&&st.GP)?st.GP:((st&&st.G)||0);
+  const pitchOK=role==='SP'
+    ? gp>=Math.ceil(games*.08)&&(st.IP||0)>=Math.ceil(games*.40)
+    : gp>=Math.ceil(games*.25)&&(st.IP||0)>=Math.ceil(games*.12);
+  const batOK=(st.G||0)>=Math.ceil(games*.40)&&(st.PA||0)>=Math.ceil(games*1.50);
+  /* 二刀流任一側達到門檻就有新人王資格:兩側都要求全額會讓他哪一邊都不夠。 */
+  if(pos==='TW')return pitchOK||batOK;
+  if(pos==='P')return pitchOK;
+  return batOK;
 }
 export function canUnlockPhoenix(added,state=S){
   if(!state.traits.glass||state.traits.phoenix||state.glassYear===state.year)return false;
@@ -96,16 +100,19 @@ export function awards(bucket,st){
   {
     const d=st.d;
     const popular=bucket==='CPBL'&&S.orgTeam==='台中猛獁';
-    const workloadOK=S.pos==='P'
-      ? (isSP()?st.IP>=60:st.G>=25)
-      : st.PA>=Math.round(LV[S.lv].g*1.7);
+    const gp=pitG(st);
+    const pitWork=isSP()?st.IP>=60:gp>=25;
+    const batWork=st.PA>=Math.round(LV[S.lv].g*1.7);
+    /* 二刀流任一側達標就進得了明星賽的門。 */
+    const workloadOK=S.pos==='TW'?(pitWork||batWork):(S.pos==='P'?pitWork:batWork);
     let performanceOK=false;
-    if(S.pos==='P'){
+    if(S.pos==='P'||S.pos==='TW'){
       const era=baseballERA(st)??99;
       performanceOK=isSP()
         ? st.IP>=80&&era<=4.00
-        : st.G>=30&&era<=3.80&&((st.SV||0)>=10||(st.HLD||0)>=10||d>=2);
-    }else{
+        : gp>=30&&era<=3.80&&((st.SV||0)>=10||(st.HLD||0)>=10||d>=2);
+    }
+    if(S.pos!=='P'&&!performanceOK){
       const obp=st.PA>0?(st.H+st.BB)/st.PA:0;
       const ops=obp+slgOf(st);
       performanceOK=st.PA>=300&&(st.avg>=0.260||ops>=0.750||st.HR>=15||st.SB>=15);
@@ -123,7 +130,7 @@ export function awards(bucket,st){
 
   /* 2. 投手個人獎項 */
   let pitcherTripleCrown=false;
-  if(S.pos==='P'){
+  if(S.pos==='P'||S.pos==='TW'){
     if(isSP() && st.IP >= th.g){
       let p=awardP(st.era,th.era[0],th.era[1],30,true);
       if(p>0&&p<100)p=clamp(p+(st.IP-th.g)*0.35,30,95);
@@ -236,22 +243,17 @@ export function awards(bucket,st){
 
   /* 4. 年度 MVP（最高榮譽）：先通過真實成績門檻，再與聯盟其他球員競爭。 */
   const isReliever=S.pos==='P'&&!isSP();
-  let mvpQual=false;
-  if(S.pos==='P'){
-    if(isSP()){
-      mvpQual=st.IP>=140&&st.era<=3.20&&(st.W>=12||st.SO>=th.so[0]);
-    }else{
-      mvpQual=st.G>=50&&st.era<=2.20&&((st.SV||0)>=35||(st.HLD||0)>=30);
-    }
-  }else{
-    const obp=st.PA>0?(st.H+st.BB)/st.PA:0;
-    const ops=obp+slgOf(st);
-    mvpQual=st.PA>=LV[S.lv].g*3.6&&(
-      ops>=0.850||
-      st.HR>=th.hr[0]||
-      (st.avg>=th.avg[0]&&st.RBI>=th.rbi[0])
-    );
-  }
+  const pitchMvpQual=()=>isSP()
+    ? st.IP>=140&&st.era<=3.20&&(st.W>=12||st.SO>=th.so[0])
+    : pitG(st)>=50&&st.era<=2.20&&((st.SV||0)>=35||(st.HLD||0)>=30);
+  const batMvpQual=()=>{
+    const obp=st.PA>0?(st.H+st.BB)/st.PA:0, ops=obp+slgOf(st);
+    return st.PA>=LV[S.lv].g*3.6&&(ops>=0.850||st.HR>=th.hr[0]||(st.avg>=th.avg[0]&&st.RBI>=th.rbi[0]));
+  };
+  /* 二刀流:任一側達到 MVP 門檻就有資格。單側就夠格已經是聯盟最頂的成績，
+     再要求兩側同時達標等於把 MVP 從二刀流手上拿掉。 */
+  let mvpQual=S.pos==='TW'?(pitchMvpQual()||batMvpQual())
+            :S.pos==='P'?pitchMvpQual():batMvpQual();
   if(pitcherTripleCrown||hitterTripleCrown){
     /* 投手/打擊三冠王：必得年度MVP，不再走機率判定。 */
     h.push(`${y} ${lgN}年度MVP`);

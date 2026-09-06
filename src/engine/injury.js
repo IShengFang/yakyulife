@@ -4,14 +4,22 @@ import {ABL, POS_AB} from '../data/abilities.js?v=1.5.12';
 import {LV} from '../data/teams.js?v=1.5.12';
 import {card, choose, board} from '../ui/dom.js?v=1.5.12';
 import {addAb} from './ability.js?v=1.5.12';
-import {isSP} from './season.js?v=1.5.12';
+import {isSP, pitG} from './season.js?v=1.5.12';
 import {removeTrait} from '../flow/events.js?v=1.5.12';
 export function tjAccrue(st,lv){ /* 球威風險 × 投法 × 角色標準化工作量；體力不參與。 */
-  if(S.pos!=='P'||S.seasonFactor<=0||!st||!(st.G>0))return;
-  const L=LV[lv||S.lv],effort={'全力投':1.30,'普通投':1.0,'養生球':0.80}[S.effort]||1.0;
+  if((S.pos!=='P'&&S.pos!=='TW')||S.seasonFactor<=0||!st||!(pitG(st)>0))return;
+  const L=LV[lv||S.lv];
+  /* 二刀流的倍數自成一組(1.45/1.25/1.10)。理由:workload 項是 IP÷該層級場次，
+     局數砍到七成會自動讓他的手臂比全職王牌更耐用——但現實相反(大谷開了兩次刀)。
+     拉高之後全力投與普通投的磨損率與單刀持平，只有養生球才真正買得到休息。
+     見 docs/twoway-design.md §5。 */
+  const effort=(S.pos==='TW'
+    ?{'全力投':1.45,'普通投':1.25,'養生球':1.10}
+    :{'全力投':1.30,'普通投':1.00,'養生球':0.80})[S.effort]||(S.pos==='TW'?1.25:1.0);
   /* 先發以該層級球季場數作標準局數；後援以約 45% 賽程、最高 60 場作標準登板。 */
   const roleTarget=isSP()?(L.g||1):Math.min(60,Math.max(1,Math.round((L.g||1)*0.45)));
-  const actual=isSP()?(st.IP||0):(st.G||0);
+  /* 後援用登板數:二刀流的 st.G 是打擊出賽，直接讀會把累積灌爆。 */
+  const actual=isSP()?(st.IP||0):pitG(st);
   const normalized=actual/roleTarget;
   const workload=clamp(0.4+0.6*normalized,0.4,1.2);
   /* 第一次術後 ×1.15；第二次後再把既有損耗速度乘 1.20（合計 ×1.38），提高第三次危機機率。 */
@@ -32,7 +40,7 @@ export function tjAccrue(st,lv){ /* 球威風險 × 投法 × 角色標準化工
    二次重建後第三次危機仍然機率很高、但不再是必然——這正是移除硬性期限想要的結果。 */
 export function tjCap(){ return S.traits.rubber?120:60; }
 export function tjGamble(cont){ /* 量表達上限:先扣 -5,再對賭 */
-  if(S.pos!=='P'||S.tj<tjCap()){ cont(); return; }
+  if((S.pos!=='P'&&S.pos!=='TW')||S.tj<tjCap()){ cont(); return; }
   S.tjCrises=(S.tjCrises||0)+1;
   const crisisBefore={vel:S.ab.vel,brk:S.ab.brk};
   addAb('vel',-5); addAb('brk',-5); board(1);
@@ -40,7 +48,7 @@ export function tjGamble(cont){ /* 量表達上限:先扣 -5,再對賭 */
   const succP=S.traits.rubber?85:55;
   choose('TJ 抉擇：你的手肘撐到極限了',[
     {t:'動 Tommy John 手術',main:true,s:'下一季全年復健；警報先 −5，第一次手術直接回升 +3～+10，重複動刀的恢復幅度較低',f:()=>{
-      S.tj=0; S.tjCount++; S.rehab=1; S.marketInjury='major';
+      S.tj=0; S.tjCount++; S.rehab=1; S.rehabPitchOnly=(S.pos==='TW'); S.marketInjury='major';
       const first=S.tjCount===1,lo=first?3:2,hi=first?10:7;
       const gv=ri(lo,hi),gb=ri(lo,hi);
       /* 能力算式固定為「危機前能力 −5 + 手術回升」；直接加在能力值，不經訓練點成本。第一次僅免除重複動刀的額外永久懲罰。 */
@@ -74,7 +82,7 @@ export function tjRepeatDamage(){
   board(1);
 }
 export function tjBigInjury(cont){
-  S.tjCount++; S.rehab=1; S.tj=0; S.marketInjury='major';
+  S.tjCount++; S.rehab=1; S.rehabPitchOnly=(S.pos==='TW'); S.tj=0; S.marketInjury='major';
   /* 5% 肩膀報廢 */
   if(chance(5)){ S.ab.vel=10; S.ab.brk=10; S.pot.vel=20; S.pot.brk=20;
     card('bad','最壞的結果',`長期閃避手肘的痛處，你的姿勢逐漸變形，投球姿勢彷彿在推鉛球。突然一陣劇痛，你突然發現你的手抬不起來了。<br><b class="dn">肩膀報廢：球速與變化球降至 10，潛力上限降至 20。</b>`);

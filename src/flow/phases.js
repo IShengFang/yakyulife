@@ -6,7 +6,7 @@ import {AMA_ANNUAL} from '../data/economy.js?v=1.5.12';
 import {card, choose, board, divider} from '../ui/dom.js?v=1.5.12';
 import {tlNote, tlPush, tlRestage} from '../ui/timeline.js?v=1.5.12';
 import {allocUI} from '../ui/alloc.js?v=1.5.12';
-import {addAb, ovr, dposReview, statBonusTxt} from '../engine/ability.js?v=1.5.12';
+import {addAb, ovr, ovrPit, ovrBat, dposReview, statBonusTxt} from '../engine/ability.js?v=1.5.12';
 import {rollInjury, tjCap} from '../engine/injury.js?v=1.5.12';
 import {isMrTeamEligible} from '../engine/tenure.js?v=1.5.12';
 import {amateurSeason, proSeason, slgOf, currentSalaryRating, baseballERA, baseballWHIP, seasonGrade} from '../engine/season.js?v=1.5.12';
@@ -18,6 +18,45 @@ import {runDraft, pathChoiceHS, pathChoiceU4, advance} from '../engine/draft.js?
 import {endGame} from '../ui/retire.js?v=1.5.12';
 /* ================= 年度流程 ================= */
 export function startYear(){ S.yearOutsideIncome=0; stepQ.length=0; stepQ.push(phasePre,phaseMid,phaseEnd); divider(`${S.year} 年 · ${S.age} 歲 · ${stageLabel()}`); tlPush(); nextStep(); }
+/* ---------- 二刀流資格檢查 ----------
+   任一側的 ovr 低於「該層級 min − 10」就強制收斂成較好的那一側。門檻隨層級自動變嚴
+   (中職一軍 31／日職一軍 40／大聯盟 46)，升上去了就得兩邊一起跟上。
+   投在放棄那一側的能力點不退還——那是二刀流的沉沒成本，也是這條路線的風險。
+   見 docs/twoway-design.md 決議 5／7／14。 */
+export function twoWayAudit(){
+  if(S.pos!=='TW'||S.stage!=='PRO')return false;
+  const L=LV[S.lv]; if(!L||!Number.isFinite(L.min))return false;
+  const bar=L.min-10, p=ovrPit(), b=ovrBat();
+  if(p>=bar&&b>=bar)return false;
+  const keepPit=p>=b;
+  const lost=keepPit?'打擊':'投球';
+  S.pos=keepPit?'P':'OF';
+  S.twFell=keepPit?'pit':'bat';
+  if(keepPit){
+    S.dpos=null;                      /* 投手沒有守位，晶片才不會繼續印「指定打擊」 */
+  }else{
+    S.role=null;
+    /* 二刀流沒練過守備工具:轉打者時補上三項，但只給替補等級的值與上限——
+       他守不動任何位置，dposReview() 會把他放到指定打擊，這是這條路的自然結局。 */
+    ['rng','fld','arm'].forEach(k=>{ if(!(k in S.ab)){ S.ab[k]=ri(18,26); S.pot[k]=ri(28,40); } });
+    S.dpos='DH';
+  }
+  card('bad','二刀流終止',
+    `球團把數據攤在你面前:你的${lost}已經跟不上<b class="dn">${L.n}</b>的水準了。`+
+    `再撐下去只是兩頭落空——從今天起，你專心當一個<b class="hl">${keepPit?'投手':'打者'}</b>。`+
+    `<br>那些年投進${lost}的訓練，沒有人會還給你。`);
+  /* 七下路線的天才是系統送的，失去二刀流身分就一併收回;自己擲出五顆 6 的不拔。
+     S.six 必須同時歸零——解鎖條件是 S.six>=5 && !genius && age<22，
+     不歸零的話下一次擲骰就會立刻再解鎖一次，等於白拔。 */
+  if(S.twOrigin==='tap'&&S.traits.genius){
+    removeTrait('genius','天才'); S.six=0;
+    card('bad','天才褪去',
+      '那份與生俱來的手感，好像是為了二刀流才借給你的。當這條路走不下去，它也一起離開了——'+
+      '<b class="dn">「天才」解除</b>，訓練骰回到常人的 1～6 點。<br>剩下的路，要用練的。');
+  }
+  board(1);
+  return true;
+}
 /* ---------- 季初 ---------- */
 export function phasePre(){
   board(0); S.tmpInj=0; S.seasonFactor=1; S.skipMid=false; S.marketInjury='healthy'; S.prevD=S.lastD||0; S.lastD=0; S.lastPayD=0; /* 先保留上季 d 供投手定位判定 */
@@ -34,7 +73,15 @@ export function phasePre(){
       ?`配球以外能力 <b class="dn">−${dec}</b>（你的配球經驗是你珍貴的財產，不會急遽衰退，配球<b class="dn">−${catcherCallDec}</b>）`
       :`所有能力 <b class="dn">−${dec}</b>`;
     card('bad','歲月不饒人',`${declAge>=35?'第二階段（逐年加劇）':'第一階段'}衰退：${declineText}${S.traits.disc?'（自律狂：生涯延後兩年）':''}${oldGhostActive?`（老鬼：原衰退 −${baseDec}，本年減緩 50%）`:''}。訓練加點照常，但身體回不去了。`); board(0); }
-  if(S.rehab>0){ S.rehab--; S.skipMid=true; S.seasonFactor=0; S.marketInjury='rehab';
+  twoWayAudit();   /* 擲骰之前先判定:被收斂的那一年就不該再吃二刀流的顆數保底 */
+  S.pitchOut=false;
+  if(S.rehab>0&&S.rehabPitchOnly&&S.pos==='TW'){
+    /* 二刀流的 TJ 復健年:手肘停機一整季，但棒子照打——這是二刀流最招牌的一段。
+       只關掉投球側(S.pitchOut)，不動 seasonFactor 與 skipMid，訓練與打擊照常。 */
+    S.rehab--; S.rehabPitchOnly=false; S.pitchOut=true; S.marketInjury='rehab';
+    card('bad','復健年（只停投球）',`手肘的重建還沒走完，這一季<b class="dn">完全不會登板</b>——但你還握得住球棒。球團把你排進打線，讓你用打擊撐過這一年。`);
+  }
+  else if(S.rehab>0){ S.rehab--; S.skipMid=true; S.seasonFactor=0; S.marketInjury='rehab';
     card('bad','復健年',`大傷尚未痊癒，本季確定<b class="dn">全年報銷</b>，只能在復健室度過。（擲骰減為 2 顆）`);
     const dummySt = {G:0,PA:0,AB:0,H:0,HR:0,RBI:0,SB:0,BB:0,W:0,L:0,SV:0,HLD:0,IP:0,SO:0,ER:0,avg:0,era:0,WHIP:0,DEF:0};
     S.log.push({y:S.year,age:S.age,tm:S.stage==='PRO'?S.teamName():(S.team||stageLabel()),line:'復健年・全年報銷', inj: true, st: S.stage==='PRO'?dummySt:null}); }
@@ -97,12 +144,19 @@ export function phasePre(){
   };
   /* 投手開季：投球強度(續航+TJ 量表) */
   const preAsk=afterAsk;
-  if(S.pos==='P'&&S.stage==='PRO'&&!S.skipMid){
+  if((S.pos==='P'||S.pos==='TW')&&S.stage==='PRO'&&!S.skipMid&&!S.pitchOut){
     afterAsk=()=>{
-      choose(`開季投球規劃（手臂狀況：${(function(){const r=S.tj/tjCap();return S.rehab>0?'復健中':r>=0.85?'手肘隱隱作痛':r>=0.6?'手臂略感疲勞':r>=0.35?'狀況尚可':'手感輕盈';})()}）`,[
-        {t:'全力投',warn:true,s:'成績最佳｜手臂負荷最大（TJ 累積 ×1.30）',f:()=>{S.effort='全力投';preAsk();}},
-        {t:'普通投',main:true,s:'標準強度｜TJ 累積正常',f:()=>{S.effort='普通投';preAsk();}},
-        {t:'養生球',s:'成績保守｜省手臂（TJ 累積 ×0.80）',f:()=>{S.effort='養生球';preAsk();}}]);
+      const arm=(function(){const r=S.tj/tjCap();return S.rehab>0?'復健中':r>=0.85?'手肘隱隱作痛':r>=0.6?'手臂略感疲勞':r>=0.35?'狀況尚可':'手感輕盈';})();
+      /* 二刀流沿用同一張面板，但它同時決定投球場次與打擊出賽——這才是每一季要重做的
+         平衡取捨(見 docs/twoway-design.md §5)。單刀的三個選項維持原樣。 */
+      const opts=S.pos==='TW'
+        ? [{t:'以投為主',warn:true,s:'先發場次 85%｜打擊出賽 90%｜TJ 累積 ×1.45',f:()=>{S.effort='全力投';preAsk();}},
+           {t:'投打並重',main:true,s:'先發場次 70%｜打擊全勤｜TJ 累積 ×1.25',f:()=>{S.effort='普通投';preAsk();}},
+           {t:'以打為主',s:'先發場次 50%｜打擊全勤｜TJ 累積 ×1.10',f:()=>{S.effort='養生球';preAsk();}}]
+        : [{t:'全力投',warn:true,s:'成績最佳｜手臂負荷最大（TJ 累積 ×1.30）',f:()=>{S.effort='全力投';preAsk();}},
+           {t:'普通投',main:true,s:'標準強度｜TJ 累積正常',f:()=>{S.effort='普通投';preAsk();}},
+           {t:'養生球',s:'成績保守｜省手臂（TJ 累積 ×0.80）',f:()=>{S.effort='養生球';preAsk();}}];
+      choose(`${S.pos==='TW'?'開季投打配比':'開季投球規劃'}（手臂狀況：${arm}）`,opts);
     };
   }
   /* 大學季前：是否投入選秀與旅外（大二～大四） */
@@ -326,11 +380,13 @@ export function movement(){
   let goodReal=false;
   { const st=S.lastSt;
     if(st&&S.seasonFactor>=0.5){
-      if(S.pos==='P'){
+      /* 二刀流:任一側達標就保護。只看一側會出現「投得夠好卻因為棒子安靜被下放」。 */
+      if(S.pos==='P'||S.pos==='TW'){
         const era=baseballERA(st)??99, whip=baseballWHIP(st)??99;
         /* 投手:ERA 或 WHIP 達聯盟一線水準,或有一定救援/中繼產能 */
-        if(era<=4.20||whip<=1.35||(st.SV||0)>=15||(st.HLD||0)>=15)goodReal=true;
-      }else{
+        if((st.IP||0)>0&&(era<=4.20||whip<=1.35||(st.SV||0)>=15||(st.HLD||0)>=15))goodReal=true;
+      }
+      if(S.pos!=='P'&&!goodReal){
         const obp=st.PA>0?(st.H+st.BB)/st.PA:0, slg=slgOf(st), ops=obp+slg;
         /* 野手:OPS 達聯盟主力水準(.720+),或雙位數轟/盜等實質產能 */
         if(ops>=0.720||st.HR>=12||st.SB>=15||st.RBI>=(LV[S.lv].g>=150?70:55))goodReal=true;
