@@ -198,7 +198,9 @@ function onePlaythrough(pos,arch,seed,alloc,want){
   timeline.resetTL();   /* TL 是模組層陣列，不重置會跨生涯累積 */
   const S=stM.newState('測',1,pos,null); stM.setS(S);
   S.__want=want||null;
-  if(pos==='TW')S.twOrigin='tap';
+  /* NOQUOTA=1:把 twOrigin 清掉，等於「七下不保送天才」——高中三年的 6 點配額不發動，
+     天才回到自然機率。用來量「二刀流本身」與「保送天才」各自貢獻了多少優勢。 */
+  if(pos==='TW')S.twOrigin=process.env.NOQUOTA?null:'tap';
   const corePot=pos==='P'?((S.pot.vel+S.pot.ctl+S.pot.brk)/3)
     :pos==='TW'?((S.pot.vel+S.pot.brk+S.pot.con+S.pot.pow)/4)
     :((S.pot.con+S.pot.pow+S.pot.eye)/3);
