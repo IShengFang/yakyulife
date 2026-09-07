@@ -76,11 +76,11 @@ try{
     state.setS(s);
 
     const view={twoWayView:career.twoWayView(),pos:s.pos};
-    const cum=retire.rpCumData();
-    const pro=retire.rpProData(s.log.filter(x=>x.st));
-    const pay=retire.rpSalaryData(s.log.filter(x=>x.st));
-    const intl=retire.rpIntlData();
-    const table=career.statTable('CPBL');
+    const logs=s.log.filter(x=>x.st);
+    const side=k=>({cum:retire.rpCumData(k),pro:retire.rpProData(logs,k),
+      pay:retire.rpSalaryData(logs,k),intl:retire.rpIntlData(k)});
+    const P=side('pit'), B=side('bat');
+    const table=career.statTables('CPBL');
 
     /* 逐年板(遊戲中的「逐年」分頁)：六格裡投打各佔三格 */
     const dom=await import('./src/ui/dom.js?v=1.5.12');
@@ -116,8 +116,16 @@ try{
       jersey:retire.jerseyWeightEnding(endingPos).body,
       ghost:retire.oldGhostLongCareerComment(endingPos)};
 
-    return {soloP,twSeason,view,cum,pro,pay,intl,table,boardHd,boardRow,img,prose,
-      tagline:retire.rpTagline()};
+    const tagline=retire.rpTagline();
+
+    /* ⑦ 球季數據卡：二刀流拆成兩個框，但仍在同一張卡裡。
+       這一段會換掉 state，所以擺在最後、而且上面要用到 S 的東西都已經算完。 */
+    state.setS(t);
+    const cardTW=season.statCardHTML(ts,'新北騎士｜DH');
+    state.setS(p);
+    const cardSolo=season.statCardHTML(ps,'新北騎士');
+
+    return {soloP,twSeason,view,P,B,table,boardHd,boardRow,img,prose,cardTW,cardSolo,tagline};
   });
 
   /* ── ① 單刀投手沒有被誤判成二刀流 ── */
@@ -139,43 +147,60 @@ try{
   assert.equal(r.view.pos,'OF','前置條件：這個角色已經被強制轉回外野手');
   assert.equal(r.view.twoWayView,true,'已被轉回的二刀流仍必須用二刀流版面');
 
-  const both=(hd,tag)=>{
-    assert.ok(hd.includes('投G')&&hd.includes('打G'),`${tag} 沒有同時列出投打出賽：`+hd.join(','));
-    assert.ok(hd.some(h=>/ERA|IP/.test(h)),`${tag} 缺投球側欄位：`+hd.join(','));
-    assert.ok(hd.some(h=>/AVG|OPS|HR/.test(h)),`${tag} 缺打擊側欄位：`+hd.join(','));
-  };
-  both(r.cum.hd,'生涯累積');
-  both(r.pro.hd,'逐年結算');
-  both(r.pay.hd,'合約薪資');
-  both(r.intl.hd,'國際賽');
-  assert.equal(r.cum.rows[0].txt.length,r.cum.hd.length);
-  assert.equal(r.intl.tot.length,r.intl.hd.length);
+  /* 投打各自一張表，而且每一張都用回「單刀的完整欄位」——不再是擠成一列時
+     被砍到剩一半的樣子。 */
+  const pitOnly=['SV','HLD','WHIP'], batOnly=['OBP','SLG','SB','DEF'];
+  const has=(hd,ks)=>ks.every(k=>hd.includes(k));
+  assert.ok(has(r.P.cum.hd,['IP','W','L','SO','ERA'].concat(pitOnly)),
+    '投球側的累積表欄位不完整：'+r.P.cum.hd.join(','));
+  assert.ok(has(r.B.cum.hd,['PA','AVG','OPS','HR','RBI'].concat(batOnly)),
+    '打擊側的累積表欄位不完整：'+r.B.cum.hd.join(','));
+  assert.ok(has(r.P.pro.hd,['IP','W-L','ERA'].concat(pitOnly)),'投球側的逐年表欄位不完整');
+  assert.ok(has(r.B.pro.hd,['PA','AVG','OPS'].concat(batOnly)),'打擊側的逐年表欄位不完整');
+  /* 兩張表不可以再混進另一側的欄位 */
+  assert.ok(!r.P.pro.hd.some(h=>batOnly.includes(h)),'投球表混進了打擊欄位');
+  assert.ok(!r.B.pro.hd.some(h=>pitOnly.includes(h)),'打擊表混進了投球欄位');
+  assert.ok(!r.P.cum.hd.includes('投G')&&!r.B.cum.hd.includes('打G'),
+    '拆表之後不該再有「投G／打G」這種擠成一列時才需要的欄名');
+  assert.equal(r.P.cum.rows[0].txt.length,r.P.cum.hd.length);
+  assert.equal(r.P.intl.tot.length,r.P.intl.hd.length);
 
-  /* 轉回之後的單刀球季：投球側印 '-'，不是 0 */
-  const rows=r.pro.blocks.flatMap(b=>b.rows);
-  assert.equal(rows.length,3);
-  assert.ok(rows[0].lvl.includes('二刀'),'二刀流球季的層級欄要標「二刀」：'+rows[0].lvl);
-  assert.ok(!rows[2].lvl.includes('二刀'),'轉回之後的球季不該還標二刀：'+rows[2].lvl);
-  assert.equal(rows[2].txt[0],'-','轉回之後沒有登板，投球側要印 - 而不是 0');
-  assert.notEqual(rows[2].txt[5],'-','轉回之後的打擊側仍有數字');
+  /* 沒上場的那一側整列不畫：三個球季裡只有兩季有投球 */
+  const pRows=r.P.pro.blocks.flatMap(b=>b.rows), bRows=r.B.pro.blocks.flatMap(b=>b.rows);
+  assert.equal(pRows.length,2,'投球表應該只有真的登板過的球季：'+pRows.length);
+  assert.equal(bRows.length,3,'打擊表應該包含全部三個球季：'+bRows.length);
+  assert.ok(pRows.every(x=>x.txt[0]!=='-'),'投球表裡不該出現整列 - 的球季');
+  /* 層級欄各標自己那一側的定位 */
+  assert.ok(pRows[0].lvl.includes('先發'),'投球表的層級欄要標定位：'+pRows[0].lvl);
+  assert.ok(bRows[0].lvl.includes('DH'),'打擊表的層級欄要標守位：'+bRows[0].lvl);
 
-  /* 累積表：兩側都有值 */
-  const cum0=r.cum.rows[0].txt;
-  assert.ok(cum0.every(v=>v!=='-'),'十九年二刀流的累積表不該有空欄：'+cum0.join(','));
+  /* 薪資表相反：沒上場的球季照樣要列（那一年還是有領薪水），該側印 '-' */
+  assert.equal(r.P.pay.rows.length,3,'薪資表不該濾掉沒登板的球季');
+  assert.equal(r.P.pay.rows[2].txt[1],'-','沒登板的那一年，投球欄要印 -');
+  assert.notEqual(r.P.pay.rows[2].txt[0],'-','沒登板的那一年還是有年薪');
 
-  /* statTable 的 HTML 也走同一組欄位 */
-  assert.ok(/投G/.test(r.table)&&/打G/.test(r.table),'生涯累積數據的 HTML 表沒有換成二刀流欄位');
+  /* 累積表：兩張都有值 */
+  assert.ok(r.P.cum.rows[0].txt.every(v=>v!=='-'),'投球側的累積表不該有空欄');
+  assert.ok(r.B.cum.rows[0].txt.every(v=>v!=='-'),'打擊側的累積表不該有空欄');
+
+  /* statTables 應該吐出兩張表 */
+  assert.ok(/投球/.test(r.table)&&/打擊/.test(r.table),'生涯累積數據沒有拆成投打兩張');
+  assert.equal((r.table.match(/<table/g)||[]).length,2,'生涯累積數據應該是兩張表');
 
   /* ── ④ 逐年板：六格裡投打各三格 ── */
   assert.deepEqual(r.boardHd,['IP','W-L','ERA','PA','HR','AVG'],'逐年板的欄位不是二刀流那一組');
   assert.equal(r.boardRow.length,6);
   assert.equal(r.boardRow[0],'-','轉回之後的球季在逐年板上，投球側要印 -');
 
-  /* ── ⑤ 結算圖 ── */
-  const has=(xs,t)=>xs.some(x=>x.includes(t));
-  assert.ok(has(r.img.stats,'投G')&&has(r.img.stats,'打G'),'結算圖的年表沒有換成二刀流欄位');
-  assert.ok(has(r.img.salary,'投G')&&has(r.img.salary,'打G'),'結算圖的薪資表沒有換成二刀流欄位');
-  assert.ok(has(r.img.stats,'生涯年表（職業成績）'));
+  /* ── ⑤ 結算圖：每一種表都畫兩張 ── */
+  const drew=(xs,t)=>xs.some(x=>x.includes(t));
+  assert.ok(drew(r.img.stats,'生涯年表（職業成績・投球）')&&drew(r.img.stats,'生涯年表（職業成績・打擊）'),
+    '結算圖的年表沒有拆成投打兩張');
+  assert.ok(drew(r.img.stats,'生涯累積數據・投球')&&drew(r.img.stats,'生涯累積數據・打擊'),
+    '結算圖的累積數據沒有拆成兩張');
+  assert.ok(drew(r.img.salary,'生涯合約薪資與成績・投球')&&drew(r.img.salary,'生涯合約薪資與成績・打擊'),
+    '結算圖的薪資表沒有拆成兩張');
+  assert.ok(!drew(r.img.stats,'投G')&&!drew(r.img.stats,'打G'),'結算圖還留著擠成一列時的欄名');
 
   /* ── ⑥ 引退文案與標語 ── */
   assert.equal(r.prose.pos,'TW');
@@ -187,6 +212,15 @@ try{
   assert.ok(/二刀流/.test(r.tagline),'結算標語沒有認出二刀流：'+r.tagline);
 
   assert.equal(errors.length,0,errors.join('\n'));
+  /* ── ⑦ 球季數據卡：兩個框、同一張卡 ── */
+  assert.equal((r.cardTW.match(/class="statline/g)||[]).length,2,
+    '二刀流的球季數據卡應該是兩個框：'+r.cardTW);
+  assert.ok(/<span class="side">投<\/span>/.test(r.cardTW)&&/<span class="side">打<\/span>/.test(r.cardTW),
+    '兩個框要各自標投／打');
+  assert.ok(!/／/.test(r.cardTW),'兩個框之後不該再有把投打串在同一行的分隔號');
+  assert.equal((r.cardSolo.match(/class="statline/g)||[]).length,1,'單刀球員的球季數據卡仍是一個框');
+
   console.log(JSON.stringify({soloP:r.soloP,twSeason:r.twSeason,
-    hd:{cum:r.cum.hd,pro:r.pro.hd,pay:r.pay.hd,intl:r.intl.hd,board:r.boardHd}},null,2));
+    hd:{pitCum:r.P.cum.hd,batCum:r.B.cum.hd,pitPro:r.P.pro.hd,batPro:r.B.pro.hd,board:r.boardHd},
+    rows:{pit:r.P.pro.blocks.flatMap(b=>b.rows).length,bat:r.B.pro.blocks.flatMap(b=>b.rows).length}},null,2));
 }finally{ await browser.close(); }

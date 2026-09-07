@@ -270,6 +270,11 @@ a{color:var(--info)}
 .statline{font-family:var(--mono);font-size:14px;line-height:22px;color:var(--text-secondary);background:var(--surface-default);
   border:1px dashed var(--border-default);border-radius:min(var(--radius-component),6px);
   padding:var(--space-8) var(--space-12);margin-top:var(--space-8)}
+/* 二刀流的球季數據：兩個框疊在同一張卡裡，靠得比單獨一個框近一點，
+   讀起來才像「同一季的兩份工作」而不是兩張卡。 */
+.statline.tw{margin-top:var(--space-6)}
+.statline .side{display:inline-block;min-width:1.5em;margin-right:var(--space-8);
+  font-family:var(--sans);font-size:13px;font-weight:700;letter-spacing:.08em;color:var(--accent-primary)}
 table.fin,table.st{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;margin-top:var(--space-8)}
 table.fin th,table.fin td,table.st th,table.st td{border-bottom:1px solid var(--border-default);padding:4px 4px;text-align:right;white-space:nowrap}
 table.fin th,table.st th{color:var(--text-muted);font-weight:500;letter-spacing:.05em}

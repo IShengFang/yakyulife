@@ -3,7 +3,7 @@ import {clamp} from '../core/rng.js?v=1.5.12';
 import {DPN, POSN, POS_ADJ_RUNS, POS_TIER_K, POS_TIER_STR} from '../data/abilities.js?v=1.5.12';
 import {LG_N, envOf, envWhip, envLeagueOps} from '../data/teams.js?v=1.5.12';
 import {TIER_TH, LEAGUE_K, MILESTONE_DEF, HOF_TH_K} from '../data/economy.js?v=1.5.12';
-import {fmtIP, slgOf, roleName3, baseballERA, baseballWHIP, pitG} from './season.js?v=1.5.12';
+import {fmtIP, slgOf, roleName3, baseballERA, baseballWHIP, pitG, pitBB} from './season.js?v=1.5.12';
 import {isCareerScoringAward} from './award-rules.js?v=1.5.12';
 /* ================= 生涯終章 ================= */
 const BUCKET_G={CPBL:120,NPB:143,MLB:162};
@@ -81,58 +81,17 @@ export function hitterCareerScore(st,bucket){
    用 S.pos 判斷的話，那十九年會在結算當下被整段當成純打者計分。
    單刀投手沒有打席、單刀野手沒有登板，所以這個判斷不會誤傷他們。 */
 export function isTwoWayCareer(st){ return !!(st&&(st.GP||0)>0&&(st.PA||0)>0&&(st.IP||0)>0); }
-/* ── 二刀流的表格欄位 ──
-   投打兩側的完整欄位聯集是二十欄，塞不進結算圖的 820px 畫布(單刀最寬的野手表就已經
-   佔掉 680 的可用 748)。所以這裡固定一組「兩側各留必要欄」的欄位表，逐年板、結算 HTML、
-   結算圖、薪資表四個畫面共用同一份——玩家在不同畫面看到的欄位才對得起來。
-   捨棄的是對二刀流沒有意義的欄位：投手側 SV/HLD/BB(二刀流不會被擺去後援)、
-   打者側 OBP/SLG/H/BB/SB/DEF(先發投手兼指定打擊，守備分本來就不計)。 */
-const TWF3=v=>v==null?'-':v.toFixed(3).replace(/^0/,'');
-const TWF2=v=>v==null?'-':v.toFixed(2);
-/* 一列裡「有沒有投球側／打擊側」要各自判斷：轉型前後的單刀球季也會混在同一張表裡，
-   缺的那一側印 '-' 而不是印 0，0 會被誤讀成「有上場但沒有產出」。
+/* ── 二刀流的表格：投打各自一張 ──
+   曾經試過把兩側擠進同一列，但那必須砍掉一半欄位（投手側的 SV/HLD/BB/WHIP、
+   打者側的 OBP/SLG/H/BB/SB/DEF）才排得下，而且同一列上兩組數字混在一起讀不出來
+   哪個屬於哪一邊。改成兩張表之後，每一張都用回「單刀的完整欄位」，
+   二刀流反而看得比單刀還完整。這裡只留兩側各自的「有沒有出賽」判斷。
+
+   一列裡「有沒有投球側／打擊側」要各自判斷：轉型前後的單刀球季也會混在同一段生涯裡，
+   沒有產出的那一側整列不畫（薪資表例外，那一年還是有領薪水）。
    投球側不能用 pitG()——純打者的 st.G 是出賽場數，會把每個打者都判成有投球。 */
 export const twHasPit=st=>!!(st&&((st.IP||0)>0||(st.GP||0)>0));
 export const twHasBat=st=>!!(st&&(st.PA||0)>0);
-function twRate(s){
-  const era=(s.IP||0)>0?baseballERA(s):null, whip=(s.IP||0)>0?baseballWHIP(s):null;
-  const obp=(s.PA||0)>0?(s.H+(s.BB||0))/s.PA:null, slg=(s.AB||0)>0?slgOf(s):null;
-  const avg=(s.AB||0)>0?s.H/s.AB:null;
-  return {era,whip,avg,ops:(obp!=null&&slg!=null)?obp+slg:null};
-}
-export const TW_YEAR_HD=['投G','IP','W-L','SO','ERA','打G','PA','AVG','HR','RBI','OPS'];
-export function twYearCells(st){
-  const s=st||{},m=twRate(s),P=twHasPit(s),B=twHasBat(s);
-  return [P?pitG(s):'-',P?fmtIP(s.IP):'-',P?`${s.W||0}-${s.L||0}`:'-',P?(s.SO||0):'-',P?TWF2(m.era):'-',
-          B?(s.G||0):'-',B?(s.PA||0):'-',B?TWF3(m.avg):'-',B?(s.HR||0):'-',B?(s.RBI||0):'-',B?TWF3(m.ops):'-'];
-}
-export const TW_CUM_HD=['Yrs','投G','IP','W','L','SO','ERA','WHIP','打G','PA','AVG','HR','RBI','OPS'];
-export function twCumCells(st){
-  const s=st||{},m=twRate(s),P=twHasPit(s),B=twHasBat(s);
-  return [s.yr||0,P?pitG(s):'-',P?fmtIP(s.IP):'-',P?(s.W||0):'-',P?(s.L||0):'-',P?(s.SO||0):'-',
-          P?TWF2(m.era):'-',P?TWF2(m.whip):'-',
-          B?(s.G||0):'-',B?(s.PA||0):'-',B?TWF3(m.avg):'-',B?(s.HR||0):'-',B?(s.RBI||0):'-',B?TWF3(m.ops):'-'];
-}
-/* 同一組欄位的數值版，給結算圖「各欄最佳值」的比較用；沒打過的那一側是 null 不參與比較。 */
-export const TW_CUM_MIN_COLS={6:1,7:1};   /* ERA、WHIP 取最小 */
-export const TW_CUM_SKIP_COLS={0:1,4:1};  /* Yrs 不比、敗投比了沒意義 */
-export function twCumNums(st){
-  const s=st||{},m=twRate(s),P=twHasPit(s),B=twHasBat(s);
-  return [s.yr||0,P?pitG(s):null,P?(s.IP||0):null,P?(s.W||0):null,P?(s.L||0):null,P?(s.SO||0):null,
-          m.era,m.whip,B?(s.G||0):null,B?(s.PA||0):null,m.avg,B?(s.HR||0):null,B?(s.RBI||0):null,m.ops];
-}
-export const TW_INTL_HD=['投G','IP','W','SO','ERA','打G','PA','AVG','HR','RBI'];
-export function twIntlCells(st){
-  const s=st||{},m=twRate(s),P=twHasPit(s),B=twHasBat(s);
-  return [P?pitG(s):'-',P?fmtIP(s.IP):'-',P?(s.W||0):'-',P?(s.SO||0):'-',P?TWF2(m.era):'-',
-          B?(s.G||0):'-',B?(s.PA||0):'-',B?TWF3(m.avg):'-',B?(s.HR||0):'-',B?(s.RBI||0):'-'];
-}
-export const TW_PAY_HD=['年薪','投G','IP','ERA','打G','PA','HR','OPS'];
-export function twPayCells(st){
-  const s=st||{},m=twRate(s),P=twHasPit(s),B=twHasBat(s);
-  return [P?pitG(s):'-',P?fmtIP(s.IP):'-',P?TWF2(m.era):'-',
-          B?(s.G||0):'-',B?(s.PA||0):'-',B?(s.HR||0):'-',B?TWF3(m.ops):'-'];
-}
 /* 這一局要不要用二刀流版面。跟計分同一個理由：89.5% 的二刀流在退休前已經被強制轉回，
    用 S.pos 判斷會讓那十九年的履歷用單刀版面印出來，缺的那一側整段消失。 */
 export function twoWayView(){
@@ -301,17 +260,17 @@ export function tierOf(bucket){
      不能各自去讀 TIER_TH[bucket][0] 的裸值(詳見 ui/retire.js 的說明)。 */
   return {i,sc:Math.round(sc),hofTh,name:LG_N[bucket]+['名人堂','明星球員','每日球員','邊緣球員','一頁過客'][i]};
 }
-export function statTable(bucket){
+export function statTable(bucket,side){
   const st=S.stats[bucket]; if(!st)return '';
   let rows;
-  if(twoWayView()){
-    rows=`<tr>${TW_CUM_HD.map(h=>`<th>${h}</th>`).join('')}</tr>`+
-      `<tr>${twCumCells(st).map(v=>`<td>${v}</td>`).join('')}</tr>`;
-  }else if(S.pos==='P'){
+  /* side='pit'／'bat' 只畫該側，二刀流會呼叫兩次（見 statTables）。 */
+  const isP=side?side==='pit':(S.pos==='P');
+  if(side&&(side==='pit'?!twHasPit(st):!twHasBat(st)))return '';
+  if(isP){
     const era=st.IP>0?baseballERA(st).toFixed(2):'-';
     const whip=st.IP>0?baseballWHIP(st).toFixed(2):'-';
     rows=`<tr><th>Yrs</th><th>G</th><th>IP</th><th>W</th><th>L</th><th>SV</th><th>HLD</th><th>SO</th><th>BB</th><th>ERA</th><th>WHIP</th></tr>
-    <tr><td>${st.yr}</td><td>${st.G}</td><td>${fmtIP(st.IP)}</td><td>${st.W}</td><td>${st.L}</td><td>${st.SV||0}</td><td>${st.HLD||0}</td><td>${st.SO}</td><td>${st.BB||0}</td><td>${era}</td><td>${whip}</td></tr>`;
+    <tr><td>${st.yr}</td><td>${pitG(st)}</td><td>${fmtIP(st.IP)}</td><td>${st.W}</td><td>${st.L}</td><td>${st.SV||0}</td><td>${st.HLD||0}</td><td>${st.SO}</td><td>${pitBB(st)}</td><td>${era}</td><td>${whip}</td></tr>`;
   }else{
     const obpN = st.PA>0 ? (st.H+st.BB)/st.PA : 0;
     const slgN = slgOf(st);
@@ -323,7 +282,13 @@ export function statTable(bucket){
     <tr><td>${st.yr}</td><td>${st.G}</td><td>${st.PA}</td><td>${avg}</td><td>${obp}</td><td>${slg}</td><td>${ops}</td><td>${st.H}</td><td>${st.HR}</td><td>${st.RBI}</td><td>${st.BB||0}</td><td>${st.SB}</td><td>${st.DEF>0?'+':''}${st.DEF||0}</td></tr>`;
   }
   const asN=st.AS||0;
-  return `<p style="margin-top:8px"><b>${LG_N[bucket]}</b>${asN?` · 明星賽 ${asN} 度入選`:''}</p><table class="fin">${rows}</table>`;
+  const side名=side==='pit'?'・投球':side==='bat'?'・打擊':'';
+  return `<p style="margin-top:8px"><b>${LG_N[bucket]}${side名}</b>${asN&&side!=='bat'?` · 明星賽 ${asN} 度入選`:''}</p><table class="fin">${rows}</table>`;
+}
+/* 一個聯盟的累積數據：單刀一張、二刀流投打各一張。 */
+export function statTables(bucket){
+  if(!twoWayView())return statTable(bucket);
+  return statTable(bucket,'pit')+statTable(bucket,'bat');
 }
 export function milestoneLevel(st,key,unit){ return Math.floor((st&&st[key]||0)/unit)*unit; }
 export function milestoneLine(label,st,defs,onlyKeys){

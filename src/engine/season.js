@@ -456,6 +456,19 @@ export function batLine(st){
   const f=v=>v.toFixed(3).replace(/^0/,'');
   return `出賽 ${st.G}｜打席 ${st.PA}｜打擊率 ${st.AB>0?f(st.avg):'-'}｜OPS ${st.AB>0?f(obpN+slgN):'-'}｜安打 ${st.H}｜全壘打 ${st.HR}｜打點 ${st.RBI}`;
 }
+/* 球季數據卡的內容。二刀流拆成兩個框：投打串在同一行讀不出來哪個數字屬於哪一邊，
+   但仍然是同一張卡——那是同一個球季的兩份工作。復健年只投不打(或只打不投)時，
+   沒有產出的那一側整個不畫，不留一排零。 */
+export function statCardHTML(st,teamTag){
+  const tag=`<span class="tag">${teamTag}</span>`;
+  if(S.pos!=='TW')return tag+`<div class="statline">${statLine(st)}</div>`;
+  const box=(side,txt)=>`<div class="statline tw"><span class="side">${side}</span>${txt}</div>`;
+  let h=tag;
+  if((st.GP||0)>0||(st.IP||0)>0)h+=box('投',pitchLine(st));
+  if((st.PA||0)>0)h+=box('打',batLine(st));
+  if(h===tag)h+=`<div class="statline">（本季無出賽紀錄）</div>`;
+  return h;
+}
 export function statLine(st){
   if(S.pos==='TW')return `投 ${pitchLine(st)}　／　打 ${batLine(st)}`;
   if(S.pos==='P'){ const role=roleN(S.role); const relief=(S.role==='CL'&&st.SV)?`｜${st.SV}救援`:(S.role==='MR'&&st.HLD)?`｜${st.HLD}中繼`:''; return `出賽 ${st.G}｜局數 ${fmtIP(st.IP)}｜${st.W}勝${st.L}敗${relief}｜三振 ${st.SO}｜保送 ${st.BB||0}｜ERA ${st.era.toFixed(2)}｜WHIP ${(st.WHIP||0).toFixed(2)}`; }
@@ -590,7 +603,7 @@ export function proSeason(){
      salary rating and award eligibility, so every display reads it from here too. */
   const seasonDp=st._dh?'DH':(S.dpos||'');
   if(S.seasonFactor===0){ card('bad','球季數據','（傷缺，本季無出賽紀錄）'); }
-  else card('','球季數據',`<span class="tag">${S.teamName()}${seasonDp?'｜'+seasonDp:''}</span><div class="statline">${statLine(st)}</div>`);
+  else card('','球季數據',statCardHTML(st,`${S.teamName()}${seasonDp?'｜'+seasonDp:''}`));
   /* 低潮年 / 生涯年 敘述卡 */
   if(st.form===-1){
     card('bad','巨大的低潮',`身體狀況很好，但是成績一直打不出來，遇到了巨大的低潮。孤獨、無助，就像是溺水一樣，只能隨意抓取孤木。`);

@@ -46,10 +46,15 @@ export function renderShareImage(evals,picks,opt){
   const TW=twoWayView(), isP=!TW&&S.pos==='P';
   const tiers=(evals||[]).map(t=>String(t).replace(/<[^>]+>/g,''));
   const hist=S.log.slice(), amaLogs=hist.filter(r=>!r.st), proLogs=hist.filter(r=>r.st);
-  const cum=rpCumData(), honors=rpHonorItems();
-  const pro=proLogs.length?rpProData(proLogs):null;
-  const salary=proLogs.length?rpSalaryData(proLogs):null;
-  const intl=S.intlCount>0?rpIntlData():null;
+  /* 二刀流的每一張表都拆成投打兩份，各自用回單刀的完整欄位——
+     擠成一列必須砍掉一半欄位，而且兩組數字混在同一列讀不出來哪個是哪邊。
+     SIDES 是「這份結算圖要畫幾輪表」：單刀一輪、二刀流兩輪。 */
+  const SIDES=TW?[{k:'pit',n:'投球'},{k:'bat',n:'打擊'}]:[{k:null,n:''}];
+  const honors=rpHonorItems();
+  const cum=SIDES.map(s0=>({...s0,d:rpCumData(s0.k)}));
+  const pro=SIDES.map(s0=>({...s0,d:proLogs.length?rpProData(proLogs,s0.k):null}));
+  const salary=SIDES.map(s0=>({...s0,d:proLogs.length?rpSalaryData(proLogs,s0.k):null}));
+  const intl=SIDES.map(s0=>({...s0,d:S.intlCount>0?rpIntlData(s0.k):null}));
   const fans=(picks||[]).map(p=>'「'+p.replace(/{n}/g,S.name)+'」');
   const showFans=(mode==='ending'||opt.fans===true)&&fans.length>0;
   const ending=opt.ending||{title:'引退之後',body:'這段棒球人生，已經走到終點。'};
@@ -228,29 +233,35 @@ export function renderShareImage(evals,picks,opt){
       c.textAlign='left'; y+=rh; }
     if(mode==='stats'){
     /* ---- 生涯累積數據 ---- */
-    sec('生涯累積數據');
-    if(cum.rows.length){
+    let drewCum=false;
+    cum.forEach(({n,d})=>{
+      if(!d.rows.length)return;
+      drewCum=true;
+      sec('生涯累積數據'+(n?'・'+n:''));
       /* PA 可能跨到五位數；不能依賴 IBM Plex Mono 剛好塞進窄欄，否則字型載入失敗
          回退到較寬的系統等寬字時，10000 會被共用截字邏輯畫成 1000。 */
       const wide={IP:1,PA:1,ERA:1,WHIP:1,AVG:1,OBP:1,SLG:1,OPS:1};
-      const cols=tcols([{t:'League',w:84,a:'l'}].concat(cum.hd.map(t=>({t,w:wide[t]?58:46,a:'r'}))));
+      const cols=tcols([{t:'League',w:84,a:'l'}].concat(d.hd.map(t=>({t,w:wide[t]?58:46,a:'r'}))));
       thRow(cols);
-      cum.rows.forEach((r,i)=>{ tdRow(cols,
+      d.rows.forEach((r,i)=>{ tdRow(cols,
         [{t:LG_N[r.b],zh:true,bold:true}].concat(r.txt.map((t,j)=>({t,best:r.best[j]}))),
         {bg:i%2?C_ROW:null,bar:LGC[r.b]}); });
-    } else { c.font='13px '+F_SANS; c.fillStyle=C_DIM; mid('（無職業層級出賽紀錄）',PADX,y+9); y+=22; }
+    });
+    if(!drewCum){ sec('生涯累積數據');
+      c.font='13px '+F_SANS; c.fillStyle=C_DIM; mid('（無職業層級出賽紀錄）',PADX,y+9); y+=22; }
     /* ---- 國際賽逐屆成績 ---- */
-    if(intl){
-      sec('國際賽逐屆成績（中華隊 '+S.intlCount+' 屆）');
+    intl.forEach(({n,d})=>{
+      if(!d||!d.rows.length)return;
+      sec('國際賽逐屆成績（中華隊 '+S.intlCount+' 屆）'+(n?'・'+n:''));
       const cols=tcols([{t:'年度',w:56,a:'l'},{t:'賽事',w:140,a:'l',zh:true},{t:'結果',w:96,a:'l',zh:true}]
-        .concat(intl.hd.map(t=>({t,w:56,a:'r'}))));
+        .concat(d.hd.map(t=>({t,w:56,a:'r'}))));
       thRow(cols);
-      intl.rows.forEach((r,i)=>{ tdRow(cols,
+      d.rows.forEach((r,i)=>{ tdRow(cols,
         [{t:r.year,year:true,crown:r.rank==='冠軍'},{t:r.name,zh:true},{t:r.rank,badge:/冠軍/.test(r.rank)?'gold':/亞軍/.test(r.rank)?'silver':''}]
           .concat(r.txt),{bg:i%2?C_ROW:null,rh:28}); });
-      tdRow(cols,[{t:'通算',zh:true,bold:true,color:C_GOOD},null,null].concat(intl.tot.map(t=>({t,bold:true}))),
+      tdRow(cols,[{t:'通算',zh:true,bold:true,color:C_GOOD},null,null].concat(d.tot.map(t=>({t,bold:true}))),
         {bg:C_PANEL,topline:true,rh:28});
-    }
+    });
     /* ---- 生涯榮譽(雙欄條列,直向優先) ---- */
     sec('生涯榮譽（'+honors.length+' 項）');
     if(honors.length){
@@ -276,17 +287,16 @@ export function renderShareImage(evals,picks,opt){
         {bg:i%2?C_ROW:null,rh:21,fs:12,color:r.inj?C_BAD:null,bold:r.inj}); });
     }
     /* ---- 生涯年表(職業,按球隊分段) ---- */
-    if(pro){
-      sec('生涯年表（職業成績）');
-      /* 二刀流：投打各留五欄(欄位表見 career.js 的 TW_YEAR_HD)。投打的完整聯集是二十欄，
-         這張畫布排不下，所以捨棄 SV/HLD/BB 與 OBP/SLG/H/BB/SB/DEF。 */
-      const defs=TW
-        ?[{t:'年',w:48,a:'l'},{t:'齡',w:34,a:'r'},{t:'球隊',w:96,a:'l',zh:true},{t:'投G',w:40,a:'r',zh:true},{t:'IP',w:54,a:'r'},{t:'W-L',w:50,a:'r'},{t:'SO',w:44,a:'r'},{t:'ERA',w:52,a:'r'},{t:'打G',w:40,a:'r',zh:true},{t:'PA',w:48,a:'r'},{t:'AVG',w:52,a:'r'},{t:'HR',w:40,a:'r'},{t:'RBI',w:44,a:'r'},{t:'OPS',w:52,a:'r'}]
-        :isP
+    pro.forEach(({k,n,d})=>{
+      if(!d||!d.blocks.length)return;
+      sec('生涯年表（職業成績'+(n?'・'+n:'')+'）');
+      /* 拆成兩張之後，每一張都用回單刀的完整欄位。 */
+      const sideP=k?k==='pit':isP;
+      const defs=sideP
         ?[{t:'年',w:48,a:'l'},{t:'齡',w:34,a:'r'},{t:'球隊',w:96,a:'l',zh:true},{t:'G',w:40,a:'r'},{t:'IP',w:54,a:'r'},{t:'W-L',w:50,a:'r'},{t:'SV',w:42,a:'r'},{t:'HLD',w:46,a:'r'},{t:'SO',w:44,a:'r'},{t:'BB',w:42,a:'r'},{t:'ERA',w:52,a:'r'},{t:'WHIP',w:54,a:'r'}]
         :[{t:'年',w:48,a:'l'},{t:'齡',w:34,a:'r'},{t:'球隊',w:84,a:'l',zh:true},{t:'G',w:38,a:'r'},{t:'PA',w:44,a:'r'},{t:'AVG',w:50,a:'r'},{t:'OBP',w:50,a:'r'},{t:'SLG',w:50,a:'r'},{t:'OPS',w:50,a:'r'},{t:'H',w:38,a:'r'},{t:'HR',w:38,a:'r'},{t:'RBI',w:42,a:'r'},{t:'BB',w:36,a:'r'},{t:'SB',w:36,a:'r'},{t:'DEF',w:42,a:'r'}];
       const cols=tcols(defs); thRow(cols);
-      pro.blocks.forEach(b=>{
+      d.blocks.forEach(b=>{
         y+=6; c.font='700 11px '+F_SANS; c.fillStyle=LGC[b.lg]||C_DIM; ls('2.2px');
         mid((LG_N[b.lg]||'')+' · '+b.team,PADX+7,y+6); ls('0px'); y+=19;
         b.rows.forEach((r,i)=>{ tdRow(cols,
@@ -294,18 +304,20 @@ export function renderShareImage(evals,picks,opt){
             .concat(r.txt.map((t,j)=>({t,best:r.best[j]}))),
           {bg:i%2?C_ROW:null,rh:21,fs:12,color:r.inj?C_BAD:null,bold:r.inj}); });
       });
-    }
+    });
     }else if(mode==='salary'){
       /* ---- 生涯合約薪資與當季表現 ---- */
-      sec('生涯合約薪資與成績');
-      if(salary&&salary.rows.length){
-        const defs=TW
-          ?[{t:'年',w:48,a:'l'},{t:'齡',w:34,a:'r'},{t:'球隊／層級',w:150,a:'l',zh:true},{t:'年薪',w:108,a:'r',zh:true},{t:'投G',w:42,a:'r',zh:true},{t:'IP',w:56,a:'r'},{t:'ERA',w:55,a:'r'},{t:'打G',w:42,a:'r',zh:true},{t:'PA',w:52,a:'r'},{t:'HR',w:42,a:'r'},{t:'OPS',w:55,a:'r'}]
-          :isP
+      let drewPay=false;
+      salary.forEach(({k,n,d})=>{
+      if(d&&d.rows.length){
+        drewPay=true;
+        sec('生涯合約薪資與成績'+(n?'・'+n:''));
+        const sideP=k?k==='pit':isP;
+        const defs=sideP
           ?[{t:'年',w:48,a:'l'},{t:'齡',w:34,a:'r'},{t:'球隊／層級',w:150,a:'l',zh:true},{t:'年薪',w:108,a:'r',zh:true},{t:'G',w:45,a:'r'},{t:'IP',w:60,a:'r'},{t:'W-L',w:55,a:'r'},{t:'SV',w:45,a:'r'},{t:'ERA',w:55,a:'r'}]
           :[{t:'年',w:48,a:'l'},{t:'齡',w:34,a:'r'},{t:'球隊／層級',w:150,a:'l',zh:true},{t:'年薪',w:108,a:'r',zh:true},{t:'G',w:45,a:'r'},{t:'PA',w:55,a:'r'},{t:'AVG',w:55,a:'r'},{t:'HR',w:45,a:'r'},{t:'RBI',w:48,a:'r'},{t:'OPS',w:55,a:'r'}];
         const cols=tcols(defs); thRow(cols);
-        salary.rows.forEach((r,i)=>{
+        d.rows.forEach((r,i)=>{
           /* 合約起始年之前插一條說明帶：這幾年是同一份合約，總額一次講清楚 */
           if(r.contract){
             const ct=r.contract;
@@ -321,7 +333,9 @@ export function renderShareImage(evals,picks,opt){
           tdRow(cols,
           [{t:r.y,year:true},r.age,{t:r.team+'·'+r.lvl,zh:true}].concat(r.txt.map((t,j)=>({t,zh:j===0}))),
           {bg:i%2?C_ROW:null,rh:23,fs:12,color:r.inj?C_BAD:null,bold:r.inj}); });
-      }else{
+      }
+      });
+      if(!drewPay){ sec('生涯合約薪資與成績');
         c.font='13px '+F_SANS; c.fillStyle=C_DIM; mid('（無職業合約與成績紀錄）',PADX,y+9); y+=22;
       }
     }else{

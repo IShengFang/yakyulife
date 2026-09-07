@@ -7,12 +7,11 @@ import {TRAIT_KEYS} from '../data/traits.js?v=1.5.12';
 import {$, card, choose, divider, board, actClear} from './dom.js?v=1.5.12';
 import {careerTimelineCard, tlNote} from './timeline.js?v=1.5.12';
 import {traitNames, traitTagStyle, traitColorRank} from './traits.js?v=1.5.12';
-import {roleN, fmtIP, slgOf, baseballERA, baseballWHIP} from '../engine/season.js?v=1.5.12';
+import {roleN, fmtIP, slgOf, baseballERA, baseballWHIP, pitG, pitBB} from '../engine/season.js?v=1.5.12';
 import {fmtMoney} from '../engine/contract.js?v=1.5.12';
 import {isChampionshipYear, isProChampionshipYear} from '../engine/championship.js?v=1.5.12';
 import {capTeam, careerMilestones, honorGroups, posLegendPhrase, primaryPos, statTable, tierOf, yearRanges, honorText,
-  twoWayView, twHasPit, twHasBat, twYearCells, twCumCells, twCumNums, twIntlCells, twPayCells,
-  TW_YEAR_HD, TW_CUM_HD, TW_CUM_MIN_COLS, TW_CUM_SKIP_COLS, TW_INTL_HD, TW_PAY_HD} from '../engine/career.js?v=1.5.12';
+  twoWayView, twHasPit, twHasBat, statTables} from '../engine/career.js?v=1.5.12';
 import {shareImageSheet} from './share-image.js?v=1.5.12';
 /* ================= 結算圖資料建構 =================
    Data builders for shareImage()'s canvas layout (design handoff 2026-08-14).
@@ -41,18 +40,67 @@ export function settlementYearHTML(year,isChampion=championshipYear(year)){
   const crown=isChampion?'<span class="champ-crown" title="該年度奪冠" role="img" aria-label="冠軍"></span>':'';
   return `<span class="champ-slot">${crown}</span>${year}`;
 }
-export function rpCumData(){ /* per-league career totals; best-of-column marks need 2+ rows */
-  const TW=twoWayView(), isP=!TW&&S.pos==='P';
-  const order=['MLB','NPB','CPBL','MINOR'].filter(b=>S.stats[b]);
-  const hd=TW?TW_CUM_HD
-           :isP?['Yrs','G','IP','W','L','SV','HLD','SO','BB','ERA','WHIP']
+/* ── 二刀流的結算表：投打各自一張，而不是擠成一列 ──
+   把兩側塞進同一列必須砍掉一半欄位（投手側的 SV/HLD/BB/WHIP、打者側的
+   OBP/SLG/H/BB/SB/DEF）才排得下，而且同一列上兩組數字混在一起本來就難讀。
+   拆成兩張之後每一張都用回「單刀的完整欄位」——二刀流反而看得比以前更完整。
+   沒有產出的那一側整列不畫（轉型前後的單刀球季只會出現在它該在的那張表）。
+
+   side：'pit' 投球側／'bat' 打擊側／不給＝單刀（照舊）。 */
+export const rpSideName=side=>side==='pit'?'投球':'打擊';
+/* 職業逐年成績的 HTML。side='pit'／'bat' 時只畫該側、並用回該側完整的單刀欄位；
+   不給 side 就是單刀球員照舊。 */
+export function proYearTableHTML(proLogs,side){
+  const isP = side ? side==='pit' : (!twoWayView() && S.pos==='P');
+  const use = side ? proLogs.filter(r=>side==='pit'?twHasPit(r.st):twHasBat(r.st)) : proLogs;
+  if(!use.length) return '';
+  const head = isP
+    ? `<tr><th>年</th><th>齡</th><th style="text-align:left">球隊</th><th>G</th><th>IP</th><th>W</th><th>L</th><th>SV</th><th>HLD</th><th>SO</th><th>BB</th><th>ERA</th><th>WHIP</th></tr>`
+    : `<tr><th>年</th><th>齡</th><th style="text-align:left">球隊</th><th>G</th><th>PA</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th><th>H</th><th>HR</th><th>RBI</th><th>BB</th><th>SB</th><th>DEF</th></tr>`;
+  const rows = use.map(r => {
+    const cS = r.inj ? 'color:var(--bad);font-weight:700;' : '';
+    const s = r.st || blankStat();
+    const yr = `<td>${settlementYearHTML(r.y,proChampionshipYear(r.y))}</td><td>${r.age}</td>`;
+    if(isP){
+      /* 投球那張的球隊欄標定位(先發/中繼/終結者)，打擊那張標實際守位。 */
+      const tag = r.role ? '·'+roleN(r.role) : '';
+      const era = s.IP>0 ? baseballERA(s).toFixed(2) : '-';
+      const whip = s.IP>0 ? baseballWHIP(s).toFixed(2) : '-';
+      return `<tr style="${cS}">${yr}<td style="text-align:left;white-space:nowrap">${r.tm}${tag}</td>`+
+        `<td>${pitG(s)}</td><td>${fmtIP(s.IP)}</td><td>${s.W}</td><td>${s.L}</td><td>${s.SV||0}</td>`+
+        `<td>${s.HLD||0}</td><td>${s.SO}</td><td>${pitBB(s)}</td><td>${era}</td><td>${whip}</td></tr>`;
+    }
+    const obpN = s.PA>0 ? (s.H+s.BB)/s.PA : 0, slgN = slgOf(s);
+    const f = v => v.toFixed(3).replace(/^0/,'');
+    return `<tr style="${cS}">${yr}<td style="text-align:left;white-space:nowrap">${r.tm}${r.p?'·'+r.p:''}</td>`+
+      `<td>${s.G}</td><td>${s.PA}</td><td>${s.AB>0?f(s.H/s.AB):'-'}</td><td>${s.PA>0?f(obpN):'-'}</td>`+
+      `<td>${s.AB>0?f(slgN):'-'}</td><td>${s.AB>0?f(obpN+slgN):'-'}</td><td>${s.H}</td><td>${s.HR}</td>`+
+      `<td>${s.RBI}</td><td>${s.BB||0}</td><td>${s.SB}</td><td>${s.DEF>0?'+':''}${s.DEF||0}</td></tr>`;
+  }).join('');
+  return `<table class="fin">${head}${rows}</table>`;
+}
+/* 國際賽逐屆成績的 HTML，同樣可以只畫一側。 */
+export function intlTableHTML(side){
+  const d=rpIntlData(side); if(!d.rows.length)return '';
+  const rows=d.rows.map(r=>`<tr><td>${settlementYearHTML(r.year,r.rank==='冠軍')}</td>`+
+    `<td style="text-align:left;white-space:nowrap">${r.name}</td><td>${r.rank}</td>`+
+    r.txt.map(v=>`<td>${v}</td>`).join('')+`</tr>`).join('');
+  return `<table class="fin"><tr><th>年度</th><th>賽事</th><th>結果</th>`+
+    d.hd.map(h=>`<th>${h}</th>`).join('')+`</tr>${rows}`+
+    `<tr><th colspan="3">國際賽通算</th>${d.tot.map(v=>`<td>${v}</td>`).join('')}</tr></table>`;
+}
+export function rpCumData(side){ /* per-league career totals; best-of-column marks need 2+ rows */
+  const TW=twoWayView(), isP=side?side==='pit':(!TW&&S.pos==='P');
+  const order=['MLB','NPB','CPBL','MINOR'].filter(b=>S.stats[b])
+    .filter(b=>!side||(side==='pit'?twHasPit(S.stats[b]):twHasBat(S.stats[b])));
+  const hd=isP?['Yrs','G','IP','W','L','SV','HLD','SO','BB','ERA','WHIP']
              :['Yrs','G','PA','AVG','OBP','SLG','OPS','H','HR','RBI','BB','SB','DEF'];
   const rows=order.map(b=>{ const st=S.stats[b];
-    if(TW)return {b,txt:twCumCells(st),num:twCumNums(st)};
     if(isP){
-      const era=baseballERA(st), whip=baseballWHIP(st);
-      return {b,txt:[st.yr,st.G,fmtIP(st.IP),st.W,st.L,st.SV||0,st.HLD||0,st.SO,st.BB||0,RP_F2(era),RP_F2(whip)],
-              num:[st.yr,st.G,st.IP,st.W,st.L,st.SV||0,st.HLD||0,st.SO,st.BB||0,era,whip]};
+      /* 二刀流的登板數在 GP、投出的四死在 pBB——走 pitG()/pitBB() 才不會拿到打擊側的數字。 */
+      const era=baseballERA(st), whip=baseballWHIP(st), g=pitG(st), bb=pitBB(st);
+      return {b,txt:[st.yr,g,fmtIP(st.IP),st.W,st.L,st.SV||0,st.HLD||0,st.SO,bb,RP_F2(era),RP_F2(whip)],
+              num:[st.yr,g,st.IP,st.W,st.L,st.SV||0,st.HLD||0,st.SO,bb,era,whip]};
     }
     const obp=st.PA>0?(st.H+st.BB)/st.PA:null, slg=st.AB>0?slgOf(st):null,
           avg=st.AB>0?st.H/st.AB:null, ops=(obp!=null&&slg!=null)?obp+slg:null;
@@ -60,32 +108,28 @@ export function rpCumData(){ /* per-league career totals; best-of-column marks n
             num:[st.yr,st.G,st.PA,avg,obp,slg,ops,st.H,st.HR,st.RBI,st.BB||0,st.SB,st.DEF||0]};
   });
   /* Yrs never marked; pitcher L/BB "best" is meaningless; ERA/WHIP take the minimum */
-  const minCols=TW?TW_CUM_MIN_COLS:isP?{9:1,10:1}:{},
-        skip=TW?TW_CUM_SKIP_COLS:isP?{0:1,4:1,8:1}:{0:1}, best={};
+  const minCols=isP?{9:1,10:1}:{}, skip=isP?{0:1,4:1,8:1}:{0:1}, best={};
   if(rows.length>=2)hd.forEach((_,i)=>{ if(skip[i])return;
     const vs=rows.map(r=>r.num[i]).filter(v=>v!=null&&!(v===0&&!minCols[i]));
     if(vs.length)best[i]=minCols[i]?Math.min(...vs):Math.max(...vs); });
   rows.forEach(r=>r.best=r.num.map((v,i)=>best[i]!=null&&v===best[i]));
   return {hd,rows};
 }
-export function rpIntlData(){
-  const TW=twoWayView(), isP=!TW&&S.pos==='P', IS=S.intlStat, il=S.intlLog||[];
+export function rpIntlData(side){
+  const TW=twoWayView(), isP=side?side==='pit':(!TW&&S.pos==='P'), IS=S.intlStat, il=S.intlLog||[];
+  /* 打者側的四死：舊存檔沒寫 BB 時由 PA−AB 還原。投球側一律走 pitBB()。 */
   const walks=st=>Number.isFinite(st&&st.BB)?Math.max(0,Math.round(st.BB)):
     (Number.isFinite(st&&st.PA)&&Number.isFinite(st&&st.AB)?Math.max(0,Math.round(st.PA-st.AB)):0);
   const totalBB=Number.isFinite(IS.BB)?Math.max(0,Math.round(IS.BB)):il.reduce((n,r)=>n+walks(r.st),0);
-  if(TW){
-    return {hd:TW_INTL_HD,
-      rows:il.map(r=>({year:r.year,name:r.name,rank:r.rank,txt:twIntlCells(r.st)})),
-      tot:twIntlCells(IS)};
-  }
+  const use=side?il.filter(r=>side==='pit'?twHasPit(r.st):twHasBat(r.st)):il;
   if(isP){
     return {hd:['G','IP','W','SV','SO','BB','ERA'],
-      rows:il.map(r=>{ const st=r.st; return {year:r.year,name:r.name,rank:r.rank,
-        txt:[st.G,fmtIP(st.IP),st.W,st.SV,st.SO,walks(st),RP_F2(baseballERA(st))]}; }),
-      tot:[IS.G,fmtIP(IS.IP),IS.W,IS.SV,IS.SO,totalBB,RP_F2(baseballERA(IS))]};
+      rows:use.map(r=>{ const st=r.st; return {year:r.year,name:r.name,rank:r.rank,
+        txt:[pitG(st),fmtIP(st.IP),st.W,st.SV||0,st.SO,pitBB(st),RP_F2(baseballERA(st))]}; }),
+      tot:[pitG(IS),fmtIP(IS.IP),IS.W,IS.SV||0,IS.SO,pitBB(IS),RP_F2(baseballERA(IS))]};
   }
   return {hd:['G','PA','AVG','H','HR','RBI','BB'],
-    rows:il.map(r=>{ const st=r.st; return {year:r.year,name:r.name,rank:r.rank,
+    rows:use.map(r=>{ const st=r.st; return {year:r.year,name:r.name,rank:r.rank,
       txt:[st.G,st.PA,RP_F3(st.AB>0?st.H/st.AB:null),st.H,st.HR,st.RBI,walks(st)]}; }),
     tot:[IS.G,IS.PA,RP_F3(IS.AB>0?IS.H/IS.AB:null),IS.H,IS.HR,IS.RBI,totalBB]};
 }
@@ -104,21 +148,16 @@ export function rpOrgOf(r){ /* org team + league + level label for one pro-log r
   if(!lvl)lvl=lg==='MLB'?'大聯盟':'一軍';
   return {team:tm,lg,lvl,minor:lvl!=='一軍'&&lvl!=='大聯盟'};
 }
-export function rpProData(proLogs){ /* team segments: a new block whenever the org changes */
-  const TW=twoWayView(), isP=!TW&&S.pos==='P';
-  const hd=TW?TW_YEAR_HD
-           :isP?['G','IP','W-L','SV','HLD','SO','BB','ERA','WHIP']
+export function rpProData(proLogs,side){ /* team segments: a new block whenever the org changes */
+  const TW=twoWayView(), isP=side?side==='pit':(!TW&&S.pos==='P');
+  const hd=isP?['G','IP','W-L','SV','HLD','SO','BB','ERA','WHIP']
              :['G','PA','AVG','OBP','SLG','OPS','H','HR','RBI','BB','SB','DEF'];
   const blocks=[]; let cur=null;
-  proLogs.forEach(r=>{ const o=rpOrgOf(r);
+  (side?proLogs.filter(r=>side==='pit'?twHasPit(r.st):twHasBat(r.st)):proLogs).forEach(r=>{ const o=rpOrgOf(r);
     if(!cur||cur.team!==o.team||cur.lg!==o.lg){ cur={team:o.team,lg:o.lg,rows:[]}; blocks.push(cur); }
     const s=r.st||blankStat(); let txt,era=null,ops=null;
-    if(TW){ txt=twYearCells(s);
-      if(twHasPit(s))era=baseballERA(s);
-      if(twHasBat(s)){ const o=s.PA>0?(s.H+s.BB)/s.PA:null, g=s.AB>0?slgOf(s):null;
-        ops=(o!=null&&g!=null)?o+g:null; }
-    } else if(isP){ era=baseballERA(s);
-      txt=[s.G,fmtIP(s.IP),`${s.W}-${s.L}`,s.SV||0,s.HLD||0,s.SO,s.BB||0,RP_F2(era),RP_F2(baseballWHIP(s))];
+    if(isP){ era=baseballERA(s);
+      txt=[pitG(s),fmtIP(s.IP),`${s.W}-${s.L}`,s.SV||0,s.HLD||0,s.SO,pitBB(s),RP_F2(era),RP_F2(baseballWHIP(s))];
     } else { const obp=s.PA>0?(s.H+s.BB)/s.PA:null, slg=s.AB>0?slgOf(s):null;
       ops=(obp!=null&&slg!=null)?obp+slg:null;
       txt=[s.G,s.PA,RP_F3(s.AB>0?s.H/s.AB:null),RP_F3(obp),RP_F3(slg),RP_F3(ops),s.H,s.HR,s.RBI,s.BB||0,s.SB,(s.DEF>0?'+':'')+(s.DEF||0)];
@@ -126,11 +165,9 @@ export function rpProData(proLogs){ /* team segments: a new block whenever the o
     /* level cell carries the season's role: fielding position for batters (一軍·CF),
        SP/MR/CL for pitchers (一軍·先發). r.p is already the position actually played,
        so a forced-DH season reads as DH here exactly as it does in the in-game table. */
-    /* 二刀流的層級欄要看得出這一季是不是還在兩邊跑：轉型前後的單刀球季就回到
-       原本的顯示方式(投手看 role、野手看實際守位)。 */
-    const dp=TW?(twHasPit(s)&&twHasBat(s)?'二刀'
-                :twHasPit(s)?(r.role?roleN(r.role):'投手'):(r.p||''))
-             :isP?(r.role?roleN(r.role):''):(r.p||'');
+    /* 層級欄的後綴：投球那張看 role(先發/中繼/終結者)，打擊那張看實際守位。
+       二刀流的球季在兩張表裡各出現一次，各自標自己那一側的定位。 */
+    const dp=isP?(r.role?roleN(r.role):''):(r.p||'');
     cur.rows.push({y:r.y,champ:proChampionshipYear(r.y),age:r.age,lvl:o.lvl+(dp?'·'+dp:''),minor:o.minor,
       inj:!!r.inj,txt,sv:s.SV||0,era,hr:s.HR||0,ops});
   });
@@ -145,29 +182,27 @@ export function rpProData(proLogs){ /* team segments: a new block whenever the o
   blocks.forEach(b=>b.rows.forEach(r=>{
     r.best=hd.map(()=>false);
     if(nRows<2)return;
-    /* 二刀流兩側各標一個：ERA(第 4 欄)與 OPS(第 10 欄)，欄序見 TW_YEAR_HD。 */
-    if(TW){ if(r.era!=null&&r.era===bERA)r.best[4]=true; if(r.ops!=null&&r.ops===bOPS)r.best[10]=true; }
-    else if(isP){ if(bSV>0&&r.sv===bSV)r.best[3]=true; if(r.era!=null&&r.era===bERA)r.best[7]=true; }
+    if(isP){ if(bSV>0&&r.sv===bSV)r.best[3]=true; if(r.era!=null&&r.era===bERA)r.best[7]=true; }
     else { if(bHR>0&&r.hr===bHR)r.best[7]=true; if(r.ops!=null&&r.ops===bOPS)r.best[5]=true; } }));
   return {hd,blocks};
 }
-export function rpSalaryData(proLogs){
-  const TW=twoWayView(), isP=!TW&&S.pos==='P';
-  const hd=TW?TW_PAY_HD
-           :isP?['年薪','G','IP','W-L','SV','ERA']
+export function rpSalaryData(proLogs,side){
+  const TW=twoWayView(), isP=side?side==='pit':(!TW&&S.pos==='P');
+  const hd=isP?['年薪','G','IP','W-L','SV','ERA']
              :['年薪','G','PA','AVG','HR','RBI','OPS'];
+  /* 薪資表不濾掉沒產出的球季——那一年還是有領薪水，只是那一側沒有數字，印 '-'。 */
   const rows=(proLogs||[]).map(r=>{ const s=r.st||blankStat(),o=rpOrgOf(r);
+    const has=side?(side==='pit'?twHasPit(s):twHasBat(s)):true;
+    const pay=Number.isFinite(r.salary)?fmtMoney(Math.round(r.salary)):'—';
     let txt;
-    if(TW){
-      txt=[Number.isFinite(r.salary)?fmtMoney(Math.round(r.salary)):'—'].concat(twPayCells(s));
-    }else if(isP){
-      txt=[Number.isFinite(r.salary)?fmtMoney(Math.round(r.salary)):'—',s.G,fmtIP(s.IP),`${s.W}-${s.L}`,s.SV||0,RP_F2(baseballERA(s))];
+    if(!has){ txt=[pay].concat(hd.slice(1).map(()=>'-')); }
+    else if(isP){
+      txt=[pay,pitG(s),fmtIP(s.IP),`${s.W}-${s.L}`,s.SV||0,RP_F2(baseballERA(s))];
     }else{
       const obp=s.PA>0?(s.H+s.BB)/s.PA:null,slg=s.AB>0?slgOf(s):null,ops=(obp!=null&&slg!=null)?obp+slg:null;
-      txt=[Number.isFinite(r.salary)?fmtMoney(Math.round(r.salary)):'—',s.G,s.PA,RP_F3(s.AB>0?s.H/s.AB:null),s.HR||0,s.RBI||0,RP_F3(ops)];
+      txt=[pay,s.G,s.PA,RP_F3(s.AB>0?s.H/s.AB:null),s.HR||0,s.RBI||0,RP_F3(ops)];
     }
-    const dp=TW?(twHasPit(s)&&twHasBat(s)?'二刀':twHasPit(s)?(r.role?roleN(r.role):'投手'):(r.p||''))
-             :isP?(r.role?roleN(r.role):''):(r.p||'');
+    const dp=isP?(r.role?roleN(r.role):''):(r.p||'');
     return {y:r.y,age:r.age,team:o.team,lvl:o.lvl+(dp?'·'+dp:''),inj:!!r.inj,
       pay:Number.isFinite(r.salary)?Math.round(r.salary):null,txt};
   });
@@ -638,7 +673,7 @@ export function endGame(reason){
   tlNote(5,'引退'); careerTimelineCard();
   /* 各聯盟數據與評價 */
   let tables='',evals=[],best=99; const tiersByLg={};
-  ['MLB','NPB','CPBL','MINOR'].forEach(b=>{ if(S.stats[b]){ tables+=statTable(b);
+  ['MLB','NPB','CPBL','MINOR'].forEach(b=>{ if(S.stats[b]){ tables+=statTables(b);
     if(b!=='MINOR'){ const t=tierOf(b); tiersByLg[b]=t; evals.push(`<span class="tag">${t.name}</span>（評價分 ${t.sc}）`); best=Math.min(best,t.i); } } });
   if(best===99)best=4;
   retireScene(tiersByLg);
@@ -663,57 +698,27 @@ export function endGame(reason){
       card('','生涯年表（業餘成績）',`<table class="fin"><tr><th>年度</th><th>齡</th><th style="text-align:left">球隊</th><th style="text-align:left">成績</th></tr>${amaRows}</table>`);
     }
     if(proLogs.length > 0){
-      const TW = twoWayView(), isP = !TW && S.pos === 'P';
-      const head = TW
-        ? `<tr><th>年</th><th>齡</th><th style="text-align:left">球隊</th>${TW_YEAR_HD.map(h=>`<th>${h}</th>`).join('')}</tr>`
-        : isP
-        ? `<tr><th>年</th><th>齡</th><th style="text-align:left">球隊</th><th>G</th><th>IP</th><th>W</th><th>L</th><th>SV</th><th>HLD</th><th>SO</th><th>BB</th><th>ERA</th><th>WHIP</th></tr>`
-        : `<tr><th>年</th><th>齡</th><th style="text-align:left">球隊</th><th>G</th><th>PA</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th><th>H</th><th>HR</th><th>RBI</th><th>BB</th><th>SB</th><th>DEF</th></tr>`;
-      const rows = proLogs.map(r => {
-        const cS = r.inj ? 'color:var(--bad);font-weight:700;' : '';
-        const s = r.st || {G:0,PA:0,AB:0,H:0,HR:0,RBI:0,SB:0,BB:0,W:0,L:0,SV:0,HLD:0,IP:0,SO:0,ER:0,avg:0,era:0,WHIP:0,DEF:0};
-        if(TW){
-          const tag = twHasPit(s)&&twHasBat(s) ? '·二刀' : (r.p?'·'+r.p:'');
-          return `<tr style="${cS}"><td>${settlementYearHTML(r.y,proChampionshipYear(r.y))}</td><td>${r.age}</td><td style="text-align:left;white-space:nowrap">${r.tm}${tag}</td>`+
-            twYearCells(s).map(v=>`<td>${v}</td>`).join('')+`</tr>`;
-        }
-        if(isP){
-          const era = s.IP>0 ? baseballERA(s).toFixed(2) : '-';
-          const whip = s.IP>0 ? baseballWHIP(s).toFixed(2) : '-';
-          return `<tr style="${cS}"><td>${settlementYearHTML(r.y,proChampionshipYear(r.y))}</td><td>${r.age}</td><td style="text-align:left;white-space:nowrap">${r.tm}</td><td>${s.G}</td><td>${fmtIP(s.IP)}</td><td>${s.W}</td><td>${s.L}</td><td>${s.SV||0}</td><td>${s.HLD||0}</td><td>${s.SO}</td><td>${s.BB||0}</td><td>${era}</td><td>${whip}</td></tr>`;
-        } else {
-          const obpN = s.PA>0 ? (s.H+s.BB)/s.PA : 0;
-          const slgN = slgOf(s);
-          const avg = s.AB>0 ? (s.H/s.AB).toFixed(3).replace(/^0/,'') : '-';
-          const obp = s.PA>0 ? obpN.toFixed(3).replace(/^0/,'') : '-';
-          const slg = s.AB>0 ? slgN.toFixed(3).replace(/^0/,'') : '-';
-          const ops = s.AB>0 ? (obpN+slgN).toFixed(3).replace(/^0/,'') : '-';
-          return `<tr style="${cS}"><td>${settlementYearHTML(r.y,proChampionshipYear(r.y))}</td><td>${r.age}</td><td style="text-align:left;white-space:nowrap">${r.tm}${r.p?"·"+r.p:""}</td><td>${s.G}</td><td>${s.PA}</td><td>${avg}</td><td>${obp}</td><td>${slg}</td><td>${ops}</td><td>${s.H}</td><td>${s.HR}</td><td>${s.RBI}</td><td>${s.BB||0}</td><td>${s.SB}</td><td>${s.DEF>0?'+':''}${s.DEF||0}</td></tr>`;
-        }
-      }).join('');
-      card('','生涯年表（職業成績）',`<table class="fin">${head}${rows}</table>`);
+      if(twoWayView()){
+        /* 二刀流畫兩張表，各自用回單刀的完整欄位——擠成一列的話兩邊都要砍掉一半欄位，
+           而且同一列上兩組數字混在一起讀不出來哪個是哪邊。沒上場的那一側整列不畫。 */
+        const ph=proYearTableHTML(proLogs,'pit'), bh=proYearTableHTML(proLogs,'bat');
+        if(ph)card('','生涯年表（職業・投球成績）',ph);
+        if(bh)card('','生涯年表（職業・打擊成績）',bh);
+      }else{
+        card('','生涯年表（職業成績）',proYearTableHTML(proLogs,null));
+      }
     }
   }
   let intlTable='';
-  if(S.intlCount>0){ const IS=S.intlStat;
-    const il=S.intlLog||[];
-    const walks=st=>Number.isFinite(st&&st.BB)?Math.max(0,Math.round(st.BB)):
-      (Number.isFinite(st&&st.PA)&&Number.isFinite(st&&st.AB)?Math.max(0,Math.round(st.PA-st.AB)):0);
-    const totalBB=Number.isFinite(IS.BB)?Math.max(0,Math.round(IS.BB)):il.reduce((n,r)=>n+walks(r.st),0);
+  if(S.intlCount>0){
+    const h=n=>`<h4 style="margin:12px 0 4px">${n}</h4>`;
+    const title=`國際賽逐屆成績（中華隊 ${S.intlCount} 屆）`;
     if(twoWayView()){
-      const rows=il.map(r=>`<tr><td>${settlementYearHTML(r.year,r.rank==='冠軍')}</td><td style="text-align:left;white-space:nowrap">${r.name}</td><td>${r.rank}</td>`+
-        twIntlCells(r.st).map(v=>`<td>${v}</td>`).join('')+`</tr>`).join('');
-      intlTable=`<h4 style="margin:12px 0 4px">國際賽逐屆成績（中華隊 ${S.intlCount} 屆）</h4><table class="fin">`+
-        `<tr><th>年度</th><th>賽事</th><th>結果</th>${TW_INTL_HD.map(h=>`<th>${h}</th>`).join('')}</tr>${rows}`+
-        `<tr><th colspan="3">國際賽通算</th>${twIntlCells(IS).map(v=>`<td>${v}</td>`).join('')}</tr></table>`;
-    } else if(S.pos==='P'){
-      const rows=il.map(r=>{ const st=r.st, era=RP_F2(baseballERA(st)); return `<tr><td>${settlementYearHTML(r.year,r.rank==='冠軍')}</td><td style="text-align:left;white-space:nowrap">${r.name}</td><td>${r.rank}</td><td>${st.G}</td><td>${fmtIP(st.IP)}</td><td>${st.W}</td><td>${st.SV}</td><td>${st.SO}</td><td>${walks(st)}</td><td>${era}</td></tr>`; }).join('');
-      const era=RP_F2(baseballERA(IS));
-      intlTable=`<h4 style="margin:12px 0 4px">國際賽逐屆成績（中華隊 ${S.intlCount} 屆）</h4><table class="fin"><tr><th>年度</th><th>賽事</th><th>結果</th><th>G</th><th>IP</th><th>W</th><th>SV</th><th>SO</th><th>BB</th><th>ERA</th></tr>${rows}<tr><th colspan="3">國際賽通算</th><td>${IS.G}</td><td>${fmtIP(IS.IP)}</td><td>${IS.W}</td><td>${IS.SV}</td><td>${IS.SO}</td><td>${totalBB}</td><td>${era}</td></tr></table>`;
-    } else {
-      const rows=il.map(r=>{ const st=r.st, avg=st.AB>0?(st.H/st.AB).toFixed(3).replace(/^0/,''):'-'; return `<tr><td>${settlementYearHTML(r.year,r.rank==='冠軍')}</td><td style="text-align:left;white-space:nowrap">${r.name}</td><td>${r.rank}</td><td>${st.G}</td><td>${st.PA}</td><td>${avg}</td><td>${st.H}</td><td>${st.HR}</td><td>${st.RBI}</td><td>${walks(st)}</td></tr>`; }).join('');
-      const avg=IS.AB>0?(IS.H/IS.AB).toFixed(3).replace(/^0/,''):'-';
-      intlTable=`<h4 style="margin:12px 0 4px">國際賽逐屆成績（中華隊 ${S.intlCount} 屆）</h4><table class="fin"><tr><th>年度</th><th>賽事</th><th>結果</th><th>G</th><th>PA</th><th>AVG</th><th>H</th><th>HR</th><th>RBI</th><th>BB</th></tr>${rows}<tr><th colspan="3">國際賽通算</th><td>${IS.G}</td><td>${IS.PA}</td><td>${avg}</td><td>${IS.H}</td><td>${IS.HR}</td><td>${IS.RBI}</td><td>${totalBB}</td></tr></table>`;
+      const ph=intlTableHTML('pit'), bh=intlTableHTML('bat');
+      if(ph)intlTable+=h(title+'・投球')+ph;
+      if(bh)intlTable+=h(title+'・打擊')+bh;
+    }else{
+      intlTable=h(title)+intlTableHTML(null);
     }
   }
   card('','生涯累積數據',(tables||'<p>（無職業層級出賽紀錄）</p>')+intlTable);
