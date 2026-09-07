@@ -1,7 +1,7 @@
 import {S} from '../core/state.js?v=1.5.12';
 import {clamp} from '../core/rng.js?v=1.5.12';
 import {DPN, POSN, POS_ADJ_RUNS, POS_TIER_K, POS_TIER_STR} from '../data/abilities.js?v=1.5.12';
-import {LG_N} from '../data/teams.js?v=1.5.12';
+import {LG_N, envOf, envWhip, envLeagueOps} from '../data/teams.js?v=1.5.12';
 import {TIER_TH, LEAGUE_K, MILESTONE_DEF, HOF_TH_K} from '../data/economy.js?v=1.5.12';
 import {fmtIP, slgOf, roleName3, baseballERA, baseballWHIP, pitG} from './season.js?v=1.5.12';
 import {isCareerScoringAward} from './award-rules.js?v=1.5.12';
@@ -31,37 +31,49 @@ export function reliefMilestoneScore(st,bucket){
   return 0;
 }
 /* 投手生涯評價的質量校正：純堆數據(局數/勝場/救援等)過去會讓長年低品質後援
-   在總分上輾壓真正壓制力強的先發。用生涯 ERA/WHIP 相對聯盟參考值(3.40/1.15，
-   對齊「稱職先發」與「王牌先發」的真實分界)算出一個 0.50~1.60 倍的品質係數，
-   乘回堆疊分數，讓失分率真正影響評價高低，同時讓各等級先發的級距拉開。 */
-export function pitcherQualityFactor(st){
-  const era=baseballERA(st), whip=baseballWHIP(st);
+   在總分上輾壓真正壓制力強的先發。用生涯 ERA/WHIP 相對「該聯盟平均」算出一個
+   0.50~1.60 倍的品質係數，乘回堆疊分數，讓失分率真正影響評價高低。
+   分界點是聯盟平均的 0.787 倍(ERA)與 0.750 倍(WHIP)——那就是舊版寫死的
+   3.40／1.15 換算成比值之後的樣子，見下面的說明。 */
+export function pitcherQualityFactor(st,bucket){
+  const E=envOf(bucket), era=baseballERA(st), whip=baseballWHIP(st);
   let q=1;
-  if(era!=null)q+=clamp((3.40-era)*0.15,-0.40,0.40);
-  if(whip!=null)q+=clamp((1.15-whip)*0.30,-0.20,0.20);
+  /* 參考值改成「相對該聯盟平均的比值」，不再寫死 3.40／1.15。
+     3.40 是舊版所有聯盟共用的一把尺，而舊版每個聯盟的平均 ERA 都是 4.32——
+     那把尺其實是 0.787 個聯盟平均。日職現在的聯盟平均是 3.01、大聯盟 4.17，
+     繼續用 3.40 的話等於白送日職投手一個 +0.06、白扣大聯盟投手 −0.12。
+     係數同步換算（0.15×4.32、0.30×1.534），讓同一個「相對水準」的投手拿到
+     跟舊版一模一樣的 q，尺才是平移而不是變形。 */
+  if(era!=null&&E.era>0)q+=clamp((0.787-era/E.era)*0.648,-0.40,0.40);
+  if(whip!=null)q+=clamp((0.750-whip/envWhip(E))*0.460,-0.20,0.20);
   return clamp(q,0.50,1.60);
 }
 export function pitcherCareerScore(st,bucket){
   const base=st.W*13+(st.SV||0)*8+(st.HLD||0)*3+st.SO*0.9+st.IP*0.35+reliefMilestoneScore(st,bucket);
-  return base*pitcherQualityFactor(st);
+  return base*pitcherQualityFactor(st,bucket);
 }
 /* 打者生涯評價的質量校正：對齊投手 pitcherQualityFactor 的設計，用生涯打擊率／OPS
-   相對聯盟參考值(0.270／0.760)算出 0.50~1.60 倍品質係數，讓打者也有跟投手對稱的
+   相對「該聯盟平均」算出 0.50~1.60 倍品質係數，讓打者也有跟投手對稱的
    品質校正，不會因為打者本來沒有品質校正而系統性地比投手更難拿到榮譽級評價。
    末尾 0.67 是配合 LEAGUE_K 重新以「絕對能力值換算生涯總分」實測校準出的尺度，
    讓投手/打者在同一把 TIER_TH 尺上大致對齊(細節見 economy.js 的 LEAGUE_K 說明)。 */
-export function hitterQualityFactor(st){
+export function hitterQualityFactor(st,bucket){
   const ab=st&&st.AB||0, pa=st&&st.PA||0;
   if(!ab||!pa)return 1;
-  const avg=st.H/ab, obp=(st.H+(st.BB||0))/pa, slg=slgOf(st), ops=obp+slg;
+  const E=envOf(bucket), avg=st.H/ab, obp=(st.H+(st.BB||0))/pa, slg=slgOf(st), ops=obp+slg;
+  /* 同 pitcherQualityFactor：.270／.760 換成相對聯盟平均的比值。
+     舊版三個聯盟的平均打擊率都是 .249、OPS 都是 .643，所以 .270 其實是
+     1.084 個聯盟平均、.760 是 1.182 個。中職現在的聯盟平均打擊率是 .256、
+     日職 .245——照舊尺算的話中職打者會被系統性多扣一截。 */
+  const lgOps=envLeagueOps(E);
   let q=1;
-  q+=clamp((avg-0.270)*3.0,-0.35,0.35);
-  q+=clamp((ops-0.760)*0.6,-0.20,0.20);
+  q+=clamp((avg/E.avg-1.084)*0.747,-0.35,0.35);
+  q+=clamp((ops/lgOps-1.182)*0.386,-0.20,0.20);
   return clamp(q,0.50,1.60);
 }
 export function hitterCareerScore(st,bucket){
   const base=st.H+st.HR*3+st.SB*0.8+st.RBI*0.5+st.BB*0.3+(st.DEF||0)*6+positionScore(st,bucket);
-  return base*hitterQualityFactor(st)*0.67;
+  return base*hitterQualityFactor(st,bucket)*0.67;
 }
 /* 這一段履歷算不算二刀流，看的是他「實際打出來的東西」——同一個聯盟裡既有登板也有打席
    ——而不是退休當下的 S.pos。原因是模擬量到的：二刀流的強制轉回中位發生在 39 歲、

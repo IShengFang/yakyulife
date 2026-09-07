@@ -1,6 +1,6 @@
 import {S} from '../core/state.js?v=1.5.12';
 import {R, ri, chance, clamp, N0} from '../core/rng.js?v=1.5.12';
-import {LV} from '../data/teams.js?v=1.5.12';
+import {LV, envRate, envHR9} from '../data/teams.js?v=1.5.12';
 import {card, choose, board} from '../ui/dom.js?v=1.5.12';
 import {tlNote} from '../ui/timeline.js?v=1.5.12';
 import {isSP, fmtIP, outsFromIP, ipFromOuts, normalizeIP, baseballERA} from './season.js?v=1.5.12';
@@ -42,24 +42,25 @@ export function intlMvpRate(st,finish){
   if(finish>1)return 0; /* 賽會 MVP 原則上只從冠亞軍球隊產生 */
   let score=0;
   /* 二刀流：兩側都是他真的打出來的，所以分數相加——跟生涯計分同一個原則。 */
-  if(twIntl(st)){
-    const era=baseballERA(st)??9, avg=st.AB>0?st.H/st.AB:0;
-    score=st.IP+st.SO*1.5+st.W*8+Math.max(0,3.5-era)*5-Math.max(0,era-3.5)*4
-         +st.H*2+st.HR*8+st.RBI*2+Math.max(0,avg-.250)*100;
-  }else if(S.pos==='P'){
-    const era=baseballERA(st)??9;
-    score=st.IP+st.SO*1.5+st.W*8+st.SV*6+Math.max(0,3.5-era)*5-Math.max(0,era-3.5)*4;
-  }else{
-    const avg=st.AB>0?st.H/st.AB:0;
-    score=st.H*2+st.HR*8+st.RBI*2+Math.max(0,avg-.250)*100;
-  }
+  /* 參考值改成賽會借用的那個聯盟的平均，不再寫死 3.5 ERA / .250 打擊率。 */
+  const E=LV[intlFormat((S.year-2026)%4===0).lv].env, eraRef=E.era, avgRef=E.avg;
+  const pitScore=()=>{ const era=baseballERA(st)??9;
+    return st.IP+st.SO*1.5+st.W*8+(st.SV||0)*6+Math.max(0,eraRef-era)*5-Math.max(0,era-eraRef)*4; };
+  const batScore=()=>{ const avg=st.AB>0?st.H/st.AB:0;
+    return st.H*2+st.HR*8+st.RBI*2+Math.max(0,avg-avgRef)*100; };
+  if(twIntl(st))score=pitScore()-(st.SV||0)*6+batScore();
+  else if(S.pos==='P')score=pitScore();
+  else score=batScore();
   const finalistMult=finish===0?1:.2;
   return Math.round(clamp((score-28)*1.7,0,75)*finalistMult);
 }
+/* 國際賽借用一個職業聯盟的環境常數(經典賽＝大聯盟、12 強＝日職一軍)，
+   而不是自己再寫一份率值。舊版 intl.js 有一份獨立的 7.5 K/9、4.6 BB/9、.270 打擊率，
+   跟職業球季完全對不起來——同一個球員在同一年的兩張成績單會像兩個人。 */
 export function intlFormat(wbc){
   return wbc
-    ?{minOvr:55,par:LV.MLB.par,ranks:['冠軍','亞軍','四強止步','八強止步','預賽出局'],games:[7,7,6,5,4]}
-    :{minOvr:52,par:LV.NPB1.par,ranks:['冠軍','亞軍','季軍','殿軍','預賽出局'],games:[9,9,9,9,5]};
+    ?{minOvr:55,lv:'MLB',par:LV.MLB.par,ranks:['冠軍','亞軍','四強止步','八強止步','預賽出局'],games:[7,7,6,5,4]}
+    :{minOvr:52,lv:'NPB1',par:LV.NPB1.par,ranks:['冠軍','亞軍','季軍','殿軍','預賽出局'],games:[9,9,9,9,5]};
 }
 export function maybeIntl(done){
   const wbc=(S.year-2026)%4===0; let p12=(S.year-2028)%4===0;
@@ -103,22 +104,31 @@ export function maybeIntl(done){
             ip = normalizeIP(g * (0.8 + R() * 0.8)); /* 每次上場大約拆彈或投 0.8~1.6 局；量化為完整出局數 */
           }
           
-          const k9=clamp(7.5+dd*0.12+clutch*.5,4,14);
-          const era=clamp(3.6-dd*0.16-clutch*.35,0.8,8);
-          /* 與職業球季共用同一把 BB/9、H/9 尺；短期賽按實際局數縮放。 */
-          const bb9=clamp(4.6-(a.ctl-par)*0.13+N0(0.4),1.2,7.5);
-          const h9=clamp(9.2-dd*0.16+N0(0.5),5,13.5);
+          /* 與職業球季共用同一組聯盟環境；短期賽按實際局數縮放。
+             國際賽是各國最強的一群，所以整體再往投手有利的方向推一檔(短期賽、全力投)。 */
+          const E=LV[intlFmt.lv].env, hrLg=envHR9(E), q=(a.vel+a.ctl+a.brk)/3;
+          const k9=clamp(envRate(E.k9,E.k9Top,a.vel*0.62+a.brk*0.38,par)+0.6+clutch*.5,E.k9*0.5,E.k9Top*1.25);
+          const bb9=clamp(envRate(E.bb9,E.bb9Top,a.ctl,par)+N0(0.35),E.bb9Top*0.5,E.bb9*2.1);
+          const h9=clamp(envRate(E.h9,E.h9Top,q,par)-0.5+N0(0.45),E.h9Top*0.75,E.h9*1.4);
+          const hr9=clamp(envRate(hrLg,hrLg*0.45,q,par)*0.85,0.02,hrLg*2.6);
+          const era=clamp(E.era+(h9-E.h9)*0.38+(bb9-E.bb9)*0.32+(hr9-hrLg)*1.45-(k9-E.k9)*0.04
+            -clutch*.35+N0(0.25),1.0,9.0);
+          const pit={IP:ip,SO:Math.round(ip/9*k9),pHR:Math.round(ip/9*hr9),ER:Math.round(era*ip/9),
+            W:i<=2&&chance(45+clutch*8)?1:0};
           intlSt=TW
-            ?{GP:g,IP:ip,pH:Math.round(ip/9*h9),pBB:Math.round(ip/9*bb9),SO:Math.round(ip/9*k9),ER:Math.round(era*ip/9),W:i<=2&&chance(45+clutch*8)?1:0,SV:0}
-            :{G:g,IP:ip,H:Math.round(ip/9*h9),BB:Math.round(ip/9*bb9),SO:Math.round(ip/9*k9),ER:Math.round(era*ip/9),W:i<=2&&chance(45+clutch*8)?1:0,SV:!isSP()&&chance(30+clutch*6)?1:0};
+            ?{GP:g,...pit,pH:Math.round(ip/9*h9),pBB:Math.round(ip/9*bb9),SV:0}
+            :{G:g,...pit,H:Math.round(ip/9*h9),BB:Math.round(ip/9*bb9),SV:!isSP()&&chance(30+clutch*6)?1:0};
         }
-        if(S.pos!=='P'){ const dd=(a.con*0.5+a.pow*0.2+a.eye*0.18+a.spd*0.12)-par-0.5; /* 同步賽季 d 公式(含 pow) */
+        if(S.pos!=='P'){ const E=LV[intlFmt.lv].env;
+          const qb=a.con*0.5+a.pow*0.2+a.eye*0.18+a.spd*0.12; /* 同步賽季的打擊綜合值 */
           const g=teamGames, pa=g*ri(3,4); /* 國家隊球星每場先發，出賽數不得超過該名次的實際賽程 */
           /* 與職業球季同式：選球直接決定保送率，並由 PA−BB 得到打數。 */
           const bb=Math.round(pa*clamp(0.062+(a.eye-par)*0.0034,0.045,0.17));
           const ab=pa-bb;
-          const avg=clamp(0.270+dd*0.006+clutch*.015,0.15,0.5), h=Math.round(ab*avg);
-          const hr=Math.round(h*clamp(0.06+Math.max(0,a.pow-par)*0.006+clutch*.01,0.03,0.28));
+          /* 短期賽的投手強度高一檔，所以打擊率往下推一點、長打不動。 */
+          const avg=clamp(envRate(E.avg,E.avgTop,qb,par)-0.012+clutch*.015,0.12,0.45), h=Math.round(ab*avg);
+          const hrRate=clamp(envRate(E.hr,E.hrTop,a.pow,par)+clutch*.004,0.002,E.hrTop*1.25);
+          const hr=Math.min(h,Math.round(ab*hrRate));
           const bat={G:g,PA:pa,AB:ab,H:h,HR:hr,RBI:Math.round((hr*2.1+h*0.35)*(1+clutch*.05)),BB:bb};
           intlSt=TW?{...intlSt,...bat}:bat;
         }

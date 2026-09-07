@@ -2,6 +2,7 @@ import {S, stepQ, nextStep, stageLabel} from '../core/state.js?v=1.5.12';
 import {R, ri, chance, clamp} from '../core/rng.js?v=1.5.12';
 import {ABL, POS_AB} from '../data/abilities.js?v=1.5.12';
 import {LV, PATHS, teamNick} from '../data/teams.js?v=1.5.12';
+import {keepTh} from '../data/thresholds.js?v=1.5.12';
 import {AMA_ANNUAL} from '../data/economy.js?v=1.5.12';
 import {card, choose, board, divider} from '../ui/dom.js?v=1.5.12';
 import {tlNote, tlPush, tlRestage} from '../ui/timeline.js?v=1.5.12';
@@ -462,12 +463,14 @@ export function movement(){
       if(S.pos==='P'||S.pos==='TW'){
         const era=baseballERA(st)??99, whip=baseballWHIP(st)??99;
         /* 投手:ERA 或 WHIP 達聯盟一線水準,或有一定救援/中繼產能 */
-        if((st.IP||0)>0&&(era<=4.20||whip<=1.35||(st.SV||0)>=15||(st.HLD||0)>=15))goodReal=true;
+        const K=keepTh(S.lv);
+        if((st.IP||0)>0&&(era<=K.era||whip<=K.whip||(st.SV||0)>=15||(st.HLD||0)>=15))goodReal=true;
       }
       if(S.pos!=='P'&&!goodReal){
         const obp=st.PA>0?(st.H+st.BB)/st.PA:0, slg=slgOf(st), ops=obp+slg;
         /* 野手:OPS 達聯盟主力水準(.720+),或雙位數轟/盜等實質產能 */
-        if(ops>=0.720||st.HR>=12||st.SB>=15||st.RBI>=(LV[S.lv].g>=150?70:55))goodReal=true;
+        const K=keepTh(S.lv);
+        if(ops>=K.ops||st.HR>=K.hr||st.SB>=15||st.RBI>=K.rbi)goodReal=true;
       }
     }
   }

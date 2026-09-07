@@ -2,6 +2,7 @@ import {S} from '../core/state.js?v=1.5.12';
 import {chance, clamp} from '../core/rng.js?v=1.5.12';
 import {DPN, GLOVE_TH, GLOVE_K} from '../data/abilities.js?v=1.5.12';
 import {LV} from '../data/teams.js?v=1.5.12';
+import {AWARD_TH, starTh} from '../data/thresholds.js?v=1.5.12';
 import {card} from '../ui/dom.js?v=1.5.12';
 import {tlNote} from '../ui/timeline.js?v=1.5.12';
 import {isSP, slgOf, baseballERA, pitG} from './season.js?v=1.5.12';
@@ -57,9 +58,10 @@ export function batterAwardName(bucket){
 }
 export function relieverAceChance(st,role){
   const era=Number(st&&st.era);
-  if(role!=='CL'||!Number.isFinite(era)||st.G<50||era>2.20||(st.SV||0)<35)return 0;
+  const clEra=starTh(S.lv).clEra;
+  if(role!=='CL'||!Number.isFinite(era)||st.G<50||era>clEra||(st.SV||0)<35)return 0;
   return clamp(
-    3+Math.max(0,2.20-era)*8+Math.max(0,(st.SV||0)-35)*0.4+Math.max(0,(st.d||0)-10)*0.8,
+    3+Math.max(0,clEra-era)*8+Math.max(0,(st.SV||0)-35)*0.4+Math.max(0,(st.d||0)-10)*0.8,
     3,18
   );
 }
@@ -67,33 +69,14 @@ export function awards(bucket,st){
   if(!LV[S.lv].top||S.seasonFactor===0)return;
   const y=S.year,h=S.honors,lgN={CPBL:'中職',NPB:'日職',MLB:'大聯盟'}[bucket],aceName=pitcherAwardName(bucket),bestBatterName=batterAwardName(bucket);
 
-  /* 符合 simSeason 數學邏輯的門檻表 [必不得獎下限, 必得獎上限] */
-  /* 比率數據(ERA/AVG/OBP)與非場次連動數據(SV/HLD/SB)三個聯盟統一標準 */
-  /* 只有吃打席/局數的(HR/RBI/SO)依 120:143:162 場次等比放大 */
-  /* 投手的量產型獎項(SO/W)依「先發輪次」放大,不是依球季場次:日職是六人輪值,
-     143 場 / 6 人 = 23.8 輪，與中職 120 場 / 5 人 = 24.0 輪幾乎相同，所以門檻與中職同級；
-     大聯盟 162 場 / 5 人 = 32.4 輪，比中職多 35%，門檻才該放大(so 175、w 14)。
-     舊版按場次放大成 so 155 / w 12，但日職先發的實際工作量並沒有跟著長，
-     造成日職名人堂級投手 15 年只拿 0.7 座三振王。 */
-  /* era(最佳投手)門檻收緊為[2.90,1.90](原[3.20,2.20])，避免生涯夠長時單靠中等偏上的ERA
-     就能反覆拿下最高榮譽；eraK(防禦率王)則刻意更嚴格，避免同一顆ERA每年雙開兩個獎項。 */
-  const TH = {
-    CPBL: { g: 120, era: [2.90, 1.90], eraK: [2.80, 1.60], sv: [22, 35], hld: [18, 30], so: [130, 180], w: [10, 16], avg: [0.300, 0.360], hr: [20, 32], rbi: [75, 105], obp: [0.370, 0.430] },
-    NPB:  { g: 143, era: [2.90, 1.90], eraK: [2.80, 1.60], sv: [22, 35], hld: [18, 30], so: [132, 183], w: [10, 16], avg: [0.300, 0.360], hr: [24, 38], rbi: [90, 125], obp: [0.370, 0.430] },
-    MLB:  { g: 162, era: [3.50, 2.40], eraK: [3.40, 2.25], sv: [22, 35], hld: [18, 30], so: [175, 240], w: [14, 20], avg: [0.300, 0.360], hr: [27, 43], rbi: [100, 140], obp: [0.370, 0.430] }
-  };
-  /* v1.6.0 大聯盟的 ERA 門檻改為 [3.50,2.40]／防禦率王 [3.40,2.25]，不再與中職日職共用。
-     比率型門檻(ERA/AVG/OBP)本來統一是有道理的——它們不隨球季場次變動。但它們隨
-     「聯盟基準(par)」變動：同一個能力值的球員，在中職是 par+18、在大聯盟只有 par+3。
-     實測 100 局以上球季的 ERA 分布：
-       中職   最佳10% 1.66 ／ 中位 2.97   → 達 2.90 的球季 48.3%
-       日職   最佳10% 2.20 ／ 中位 3.40   → 29.9%
-       大聯盟 最佳10% 3.21 ／ 中位 4.33   → 4.6%
-     大聯盟連「最佳 10% 的球季」都摸不到 2.90，年度最佳投手變成一個再怎麼投都拿不到
-     的獎(生涯中位 1 座，日職 6 座)。打者的比率門檻不動：打率達 .300 的比例是
-     47.7%／39.7%／30.8%，階梯本來就正常。
-     註：這一項只值約 60 分，遠不足以解釋大聯盟的名人堂缺口(那是 economy.js 的
-     Kbase 問題)，但「拿不到的獎」本身就是壞掉的體驗，該修。 */
+  /* 門檻表已經搬到 data/thresholds.js（AWARD_TH），並依新的聯盟環境重新擬合過。
+     擬合目標是「保住得獎機率的分布」而不是保住絕對數字，作法與實測誤差見那個檔案。 */
+  const TH = AWARD_TH;
+  /* 這一段留著當歷史：v1.6.0 曾把大聯盟的 ERA 門檻單獨改成 [3.50,2.40]，
+     因為當時三個聯盟的率值基準是同一組寫死的常數，只靠「− par」表達聯盟差異，
+     大聯盟連最佳 10% 的球季都摸不到 2.90，年度最佳投手變成拿不到的獎。
+     v1.6.1 之後率值基準本身就隨聯盟走了（data/teams.js 的 env），
+     門檻也整組依新環境重新擬合（data/thresholds.js），這個症狀從根上消失。 */
   const th = TH[bucket] || TH.CPBL;
 
   /* 1. 明星賽入選：一般球隊須先達真實成績門檻；台中猛獁可用 30% 人氣票入選。 */
@@ -108,14 +91,16 @@ export function awards(bucket,st){
     let performanceOK=false;
     if(S.pos==='P'||S.pos==='TW'){
       const era=baseballERA(st)??99;
+      const AS=starTh(S.lv);
       performanceOK=isSP()
-        ? st.IP>=80&&era<=4.00
-        : gp>=30&&era<=3.80&&((st.SV||0)>=10||(st.HLD||0)>=10||d>=2);
+        ? st.IP>=80&&era<=AS.eraSP
+        : gp>=30&&era<=AS.eraRP&&((st.SV||0)>=10||(st.HLD||0)>=10||d>=2);
     }
     if(S.pos!=='P'&&!performanceOK){
       const obp=st.PA>0?(st.H+st.BB)/st.PA:0;
       const ops=obp+slgOf(st);
-      performanceOK=st.PA>=300&&(st.avg>=0.260||ops>=0.750||st.HR>=15||st.SB>=15);
+      const AS=starTh(S.lv);
+      performanceOK=st.PA>=300&&(st.avg>=AS.avg||ops>=AS.ops||st.HR>=AS.hr||st.SB>=15);
     }
     let asP=0;
     if(workloadOK){
@@ -180,7 +165,8 @@ export function awards(bucket,st){
     { const paGate=Math.round(LV[S.lv].g*3.6);
       if(st.PA >= paGate){
         const obp0=st.PA>0?(st.H+st.BB)/st.PA:0, ops0=obp0+slgOf(st);
-        let p=awardP(ops0,0.900,1.050,30);
+        const BOY=starTh(S.lv).boyOps;
+        let p=awardP(ops0,BOY[0],BOY[1],30);
         if(p>0&&p<100)p=clamp(p+(st.PA-paGate)*0.08,30,95);
         if(p===100&&st.PA<paGate*1.15)p=95;
         if(chance(p)) h.push(`${y} ${bestBatterName}`);
@@ -242,13 +228,14 @@ export function awards(bucket,st){
   }
 
   /* 4. 年度 MVP（最高榮譽）：先通過真實成績門檻，再與聯盟其他球員競爭。 */
+  const MV=starTh(S.lv);
   const isReliever=S.pos==='P'&&!isSP();
   const pitchMvpQual=()=>isSP()
-    ? st.IP>=140&&st.era<=3.20&&(st.W>=12||st.SO>=th.so[0])
-    : pitG(st)>=50&&st.era<=2.20&&((st.SV||0)>=35||(st.HLD||0)>=30);
+    ? st.IP>=140&&st.era<=MV.mvpEra&&(st.W>=12||st.SO>=th.so[0])
+    : pitG(st)>=50&&st.era<=MV.clEra&&((st.SV||0)>=35||(st.HLD||0)>=30);
   const batMvpQual=()=>{
     const obp=st.PA>0?(st.H+st.BB)/st.PA:0, ops=obp+slgOf(st);
-    return st.PA>=LV[S.lv].g*3.6&&(ops>=0.850||st.HR>=th.hr[0]||(st.avg>=th.avg[0]&&st.RBI>=th.rbi[0]));
+    return st.PA>=LV[S.lv].g*3.6&&(ops>=MV.mvpOps||st.HR>=th.hr[0]||(st.avg>=th.avg[0]&&st.RBI>=th.rbi[0]));
   };
   /* 二刀流:任一側達到 MVP 門檻就有資格。單側就夠格已經是聯盟最頂的成績，
      再要求兩側同時達標等於把 MVP 從二刀流手上拿掉。 */
@@ -261,7 +248,7 @@ export function awards(bucket,st){
     if(isReliever){
       /* 後援 MVP 保持極低機率，且必須先達神級救援／中繼實績。 */
       const pMVP=clamp(
-        0.5+Math.max(0,st.d-10)*0.4+Math.max(0,2.20-st.era)*2+
+        0.5+Math.max(0,st.d-10)*0.4+Math.max(0,MV.clEra-st.era)*2+
         Math.max(0,(st.SV||0)-35)*0.08+Math.max(0,(st.HLD||0)-30)*0.04,
         0.5,5
       );

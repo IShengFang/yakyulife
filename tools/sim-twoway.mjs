@@ -244,7 +244,19 @@ function onePlaythrough(pos,arch,seed,alloc,want){
       W:st.W||0,SO:st.SO||0,IP:st.IP||0,SV:st.SV||0,H:st.H||0,HR:st.HR||0,RBI:st.RBI||0,
       era:(st.IP>0?+(st.ER*9/st.IP).toFixed(2):null)});
   }
-  return {pos:S.pos,endPos:S.pos,fell:S.twFell||null,
+  /* SEASONS=1：把每一個職業球季的成績單也吐出來，供門檻的百分位對齊使用。
+     只留計算門檻要用到的欄位，不然檔案會大到沒必要。 */
+  const seasons=process.env.SEASONS?(S.log||[]).filter(r=>r.st&&r.lv).map(r=>{
+    const t=r.st, ip=t.IP||0, pg=Number.isFinite(t.GP)?t.GP:(t.G||0);
+    const pH=Number.isFinite(t.pH)?t.pH:(t.H||0), pBB=Number.isFinite(t.pBB)?t.pBB:(t.BB||0);
+    const obp=t.PA>0?(t.H+(t.BB||0))/t.PA:null, ab=t.AB||0;
+    return {lv:r.lv,role:r.role||null,two:Number.isFinite(t.GP)&&(t.PA||0)>0&&ip>0,
+      GP:pg,IP:ip,SO:t.SO||0,W:t.W||0,L:t.L||0,SV:t.SV||0,HLD:t.HLD||0,
+      era:ip>0?+( (t.ER||0)*9/ip).toFixed(3):null, whip:ip>0?+((pH+pBB)/ip).toFixed(3):null,
+      G:t.G||0,PA:t.PA||0,AB:ab,H:t.H||0,HR:t.HR||0,RBI:t.RBI||0,SB:t.SB||0,BB:t.BB||0,
+      avg:ab>0?+(t.H/ab).toFixed(4):null, obp:obp!=null?+obp.toFixed(4):null};
+  }):undefined;
+  return {seasons,pos:S.pos,endPos:S.pos,fell:S.twFell||null,
     fellAge:S.twFellAge||null,fellLv:S.twFellLv||null,twSeasons:S.twSeasons||0,corePot:+corePot.toFixed(1),
     peakOvr,peakCore:+peakCore.toFixed(1),top:topLv?topLv.lv:null,
     bigInj:S.bigInj||0,tj:S.tjCount||0,retireAge:S.age,salary:S.salary||0,

@@ -1,7 +1,8 @@
 import {S, blankStat, bucketOf, nextStep, stageLabel} from '../core/state.js?v=1.5.12';
 import {R, ri, chance, clamp, N0} from '../core/rng.js?v=1.5.12';
 import {POS_ADJ_RUNS, POS_PT_BAR} from '../data/abilities.js?v=1.5.12';
-import {LV, HS_CUPS, U_CUPS, spLoad} from '../data/teams.js?v=1.5.12';
+import {LV, HS_CUPS, U_CUPS, spLoad, envRate, envHR9} from '../data/teams.js?v=1.5.12';
+import {pitchTh, batTh} from '../data/thresholds.js?v=1.5.12';
 import {card, board} from '../ui/dom.js?v=1.5.12';
 import {ovr, careerAllStars, toolGap} from './ability.js?v=1.5.12';
 import {tjAccrue, tjGamble} from './injury.js?v=1.5.12';
@@ -71,6 +72,28 @@ export const pitG=st=>Number.isFinite(st&&st.GP)?st.GP:((st&&st.G)||0);
    單刀投手沒有 pH/pBB，一律走這兩個讀取函式回退到 H/BB。 */
 export const pitH=st=>Number.isFinite(st&&st.pH)?st.pH:((st&&st.H)||0);
 export const pitBB=st=>Number.isFinite(st&&st.pBB)?st.pBB:((st&&st.BB)||0);
+/* ⑤ ERA 一律從被安打／四死球／被全壘打／三振反推，不再獨立擲。
+   舊版 era 是自己一條式子(4.32 − d*0.17)，跟 WHIP 的兩個零件毫無關係，所以
+   par 的投手會同時印出 WHIP 1.53 與 ERA 4.32——同一列上的兩個數字互相打臉。
+
+   會改動投球成績的地方有四個(產生、賽季狀態倍率、火燙低潮、投法加成)，
+   四個都必須走這一支重算，ERA 才不會又跟零件走散。運氣項只在產生時擲一次，
+   存成 st.eraLuck 之後每次重算都沿用，重算不會把運氣洗掉。
+   係數是各事件的得分價值：被安打 .38、四死 .32、被全壘打 1.45、三振 −.04。 */
+export function eraFromComponents(st,lv){
+  const L=LV[lv]; if(!L||!L.env)return st.era||0;
+  const E=L.env, ip=normalizeIP(st&&st.IP); if(!(ip>0))return st.era||0;
+  const per9=v=>(v||0)/ip*9, hrLg=envHR9(E);
+  return clamp(E.era+(per9(pitH(st))-E.h9)*0.38+(per9(pitBB(st))-E.bb9)*0.32
+    +(per9(st.pHR)-hrLg)*1.45-(per9(st.SO)-E.k9)*0.04+(st.eraLuck||0),1.20,9.90);
+}
+/* 重算 ERA 並讓自責分跟著走。任何動到投球零件的地方，收尾都呼叫這一支。 */
+export function syncEra(st,lv){
+  st.era=eraFromComponents(st,lv);
+  st.ER=Math.round(st.era*normalizeIP(st.IP)/9);
+  st.WHIP=normalizeIP(st.IP)>0?+(baseballWHIP(st)||0).toFixed(2):(st.WHIP||0);
+  return st.era;
+}
 export const TW_EFFORT={
   '全力投':{pit:0.85,bat:0.90,tj:1.45},
   '普通投':{pit:0.70,bat:1.00,tj:1.25},
@@ -116,16 +139,25 @@ export function simSeason(lv){
       st[gK]=Math.max(1,Math.round(clamp(45+(Math.min(a.sta,60)-40)*0.3,25,68)*f*perfF*(0.94+R()*0.08)*(TW?share.pit:1))); /* 高體力後援:出賽數貢獻以 sta60 封頂,不會貼近先發工作量 */
       st.IP=+(st[gK]*1.05).toFixed(1);
     }
-    st.era=clamp(4.32-d*0.17+N0(0.35),1.40,9.90);
-    st.ER=Math.round(st.era*st.IP/9);
-    const k9=clamp(6.2+(a.vel-par)*0.11+(a.brk-par)*0.06+N0(0.5),3.5,13.5);
+    /* 四個率值全部由聯盟環境內插(見 teams.js 的 env)：par 的投手投出聯盟平均、
+       能力 80 投出聯盟頂尖。舊版把 6.2/4.6/9.2 寫死、只靠「− par」表達聯盟差異，
+       於是三個聯盟的平均球季長得一模一樣——中職一軍跟大聯盟的平均投手都是 6.2 K/9。
+       三振看球速與變化球，四死看控球，被安打與被全壘打看整體實力。 */
+    const E=L.env, hrLg=envHR9(E);
+    const k9=clamp(envRate(E.k9,E.k9Top,a.vel*0.62+a.brk*0.38,par)+N0(0.45),E.k9*0.42,E.k9Top*1.18);
+    const bb9=clamp(envRate(E.bb9,E.bb9Top,a.ctl,par)+N0(0.35),E.bb9Top*0.52,E.bb9*2.10);
+    const h9=clamp(envRate(E.h9,E.h9Top,q,par)+N0(0.45),E.h9Top*0.80,E.h9*1.42);
+    const hr9=clamp(envRate(hrLg,hrLg*0.45,q,par)*(0.82+R()*0.36),0.02,hrLg*2.6);
     st.SO=Math.round(st.IP/9*k9);
-    /* 保送:控球決定(BB/9);被安打:d 值決定;WHIP=(H+BB)/IP */
-    const bb9=clamp(4.6-(a.ctl-par)*0.13+N0(0.4),1.2,7.5);
     st[bbK]=Math.round(st.IP/9*bb9);
-    const h9=clamp(9.2-d*0.16+N0(0.5),5.0,13.5);
     st[hK]=Math.round(st.IP/9*h9);
-    st.WHIP=st.IP>0?+(baseballWHIP(st)||0).toFixed(2):0;
+    st.pHR=Math.round(st.IP/9*hr9);
+    /* ERA 從零件反推，不再獨立擲。舊版 era 是自己一條式子，跟被安打／四死球無關，
+       所以 par 的投手會同時出現 WHIP 1.53 與 ERA 4.32——那兩個數字在同一列上互相打臉。
+       這裡改成「聯盟平均 ＋ 各項相對聯盟的偏差 × 該事件的得分價值」，
+       par 的投手正好落在聯盟 ERA，任何人的 ERA 與 WHIP 從此同進同退。 */
+    st.eraLuck=N0(0.20);
+    syncEra(st,lv);
     if(isSP()){
       const dec=Math.round(st[gK]*0.72), wp=clamp(0.50+d*0.014+N0(0.05),0.15,0.85);
       st.W=Math.round(dec*wp); st.L=dec-st.W;
@@ -172,9 +204,13 @@ export function simSeason(lv){
     st._dh=S.dpos==='DH'; /* 只有正式登錄為 DH 的球季才按 DH 結算。 */
     st.BB=Math.round(st.PA*clamp(0.062+(a.eye-par)*0.0034,0.045,0.17));
     st.AB=st.PA-st.BB;
-    st.avg=clamp(0.252+d*0.0058+(a.sta-50)*0.0003+(a.spd-par)*0.0006+N0(0.014),0.140,0.380);
+    /* 打擊率與全壘打率同樣由聯盟環境內插。全壘打只看力量——Contact 高不會變成全壘打，
+       它走的是打擊率那條線。舊版的 0.075 上限只有中職碰得到(需要力量 73.5，日職 82.5、
+       大聯盟 88.5，但能力上限是 80)，所以最強的聯盟反而是長打天花板最低的。 */
+    const E=L.env;
+    st.avg=clamp(envRate(E.avg,E.avgTop,q,par)+(a.sta-50)*0.0003+N0(0.014),0.150,0.400);
     st.H=Math.round(st.AB*st.avg); st.avg=st.AB?st.H/st.AB:0;
-    st.HR=Math.round(st.AB*clamp(0.010+(a.pow-par)*0.0022,0.001,0.075)*(0.85+R()*0.3));
+    st.HR=Math.round(st.AB*clamp(envRate(E.hr,E.hrTop,a.pow,par),0.0015,E.hrTop*1.25)*(0.85+R()*0.3));
     const fullSeasonSB=clamp((a.spd-45)*0.5+(a.spd-par)*1.3+N0(4),0,70);
     st.SB=scaledSteals(fullSeasonSB,st.PA,L.g); /* 盜壘依實際打席機會縮放，不能只打十幾場卻跑出完整球季產量。 */
     st.RBI=Math.round(st.HR*2.1+(st.H-st.HR)*0.30);
@@ -201,10 +237,12 @@ export function applySeasonForm(st,lv){
     /* 投手:三振/勝場隨倍率;被安打與自責分反向(生涯年變少、低潮變多);SV/HLD 依倍率但不超過出賽數 */
     st.SO=Math.round(st.SO*m);
     st.W=Math.round(st.W*m); if(st.L!=null)st.L=Math.max(0,Math.round(st.L/(m||1)));
+    /* 生涯年／低潮動的是零件(被安打、被全壘打)，ERA 由零件重算——直接改 ERA 再
+       回推自責分的話，ERA 會離開 WHIP。 */
     const pk=Number.isFinite(st.pH)?'pH':'H';
-    st[pk]=Math.max(0,Math.round(st[pk]/m)); st.ER=Math.max(0,Math.round(st.ER/m));
-    st.era=st.IP>0?+(baseballERA(st)||0).toFixed(2):st.era;
-    st.WHIP=st.IP>0?+(baseballWHIP(st)||0).toFixed(2):st.WHIP;
+    st[pk]=Math.max(0,Math.round(st[pk]/m));
+    if(Number.isFinite(st.pHR))st.pHR=Math.max(0,Math.round(st.pHR/m));
+    syncEra(st,lv);
     const gp=pitG(st);
     if(st.SV)st.SV=Math.min(gp,Math.round(st.SV*m));
     if(st.HLD)st.HLD=Math.min(Math.max(0,gp-(st.SV||0)),Math.round(st.HLD*m));
@@ -309,21 +347,26 @@ function pitchGrade(st,lv,recordedRole){
   const era=baseballERA(st), whip=baseballWHIP(st);
   if(era==null||(st.IP||0)<g*0.22)return -1;
   const bulk=pitcherSalaryRole(st,recordedRole)==='SP'?((st.IP||0)>=g*0.5):(((st.SV||0)+(st.HLD||0))>=15*r);
-  if(era<=2.80&&bulk)return 3;
-  if(era<=3.50||(whip!=null&&whip<=1.15&&era<=3.75))return 2;
-  if(era<=4.35)return 1;
+  /* 門檻改成依聯盟走(見 data/thresholds.js)。舊版是絕對的 2.80／3.50／4.35，
+     那在三個聯盟平均 ERA 都是 4.32 的舊環境下沒問題；現在日職平均 3.01、
+     大聯盟 4.17，同一個 3.50 在日職是中庸、在大聯盟是王牌。 */
+  const T=pitchTh(lv);
+  if(era<=T.era3&&bulk)return 3;
+  if(era<=T.era2||(whip!=null&&whip<=T.whip2&&era<=T.era2w))return 2;
+  if(era<=T.era1)return 1;
   return 0;
 }
 function batGrade(st,lv){
   const g=(LV[lv]||{}).g||130, r=g/130, pa=st.PA||0;
   if(pa<g*2.0)return -1;
   const obp=(st.H+(st.BB||0))/pa, ops=obp+slgOf(st);
-  /* 門檻對齊本作的 OPS 尺度，不是現實棒球的：這裡「聯盟平均」的 OPS 約 .64，
-     .750 已是主力等級、.850 是聯盟頂尖。用現實的 .700/.800/.900 會讓小聯盟
-     (升級門檻只比該級 par 高 2~3 點)的球員有六成以上被評為「差」，卡住升級。 */
-  if(ops>=0.850||(ops>=0.800&&(st.HR||0)>=20*r))return 3;
-  if(ops>=0.750)return 2;
-  if(ops>=0.650)return 1;
+  /* 門檻改成依聯盟走(見 data/thresholds.js)。各聯盟的平均 OPS 現在不一樣
+     (中職 .705／日職 .672／大聯盟 .713)，全壘打的門檻更是差三倍——
+     大聯盟的「二十轟等級」相當於中職的七轟。 */
+  const T=batTh(lv);
+  if(ops>=T.ops3||(ops>=T.ops3h&&(st.HR||0)>=T.hr3))return 3;
+  if(ops>=T.ops2)return 2;
+  if(ops>=T.ops1)return 1;
   return 0;
 }
 export function seasonGrade(st,lv,recordedRole){
@@ -363,8 +406,10 @@ export function normalizePitchingStats(st,lv){
   const g=clamp(Math.round(pitG(st)||0),0,maxG);
   if(twoWay)st.GP=g; else st.G=g;
   st.IP=normalizeIP(clamp(Number(st.IP)||0,0,g*9));
-  (twoWay?['pH','pBB']:['H','BB']).concat(['SO','ER','W','L','SV','HLD'])
-    .forEach(k=>st[k]=Math.max(0,Math.round(st[k]||0)));
+  (twoWay?['pH','pBB']:['H','BB']).concat(['SO','ER','W','L','SV','HLD','pHR'])
+    .forEach(k=>{ if(k==='pHR'&&!Number.isFinite(st.pHR))return;
+      st[k]=Math.max(0,Math.round(st[k]||0)); });
+  if(Number.isFinite(st.pHR))st.pHR=Math.min(st.pHR,pitH(st));   /* 被全壘打不可超過被安打 */
   if(isSP()){
     st.SV=0; st.HLD=0;
     const decCap=g;
@@ -396,6 +441,7 @@ export function accStat(bucket,st){
   if((S.pos==='P'||S.pos==='TW')&&S.role){ S.roleYears[S.role]=(S.roleYears[S.role]||0)+1; }
   if(Number.isFinite(st.GP))t.GP=(t.GP||0)+st.GP;
   if(Number.isFinite(st.pH)){ t.pH=(t.pH||0)+st.pH; t.pBB=(t.pBB||0)+(st.pBB||0); }
+  if(Number.isFinite(st.pHR))t.pHR=(t.pHR||0)+st.pHR;
   if(S.pos==='TW')S.twSeasons=(S.twSeasons||0)+1;   /* 真的以二刀流身分打完的球季數 */
   ['G','PA','AB','H','HR','RBI','SB','BB','W','L','SV','HLD','SO','ER'].forEach(k=>t[k]+=(st[k]||0));
   t.DEF+=(st.DEF||0);
@@ -473,7 +519,11 @@ export function proSeason(){
       if(!isSP()){ const reliefCap=Math.min(68,LV[seasonLv].g); const addG=Math.min(Math.max(0,reliefCap-pitG(st)),Math.round(p*1.2)); st[gK]=pitG(st)+addG; st.IP=+(st.IP+addG*1.05).toFixed(1); }
       st.SO+=Math.round(p*8); st.IP=+(st.IP+p*4).toFixed(1);
       if(isSP())st.W+=Math.round(p*0.4); else st.SV+=Math.round(p*0.6);
-      st.era=st.IP>0?clamp(st.era-p*0.05,1.40,9.90):st.era; st.ER=Math.round(st.era*st.IP/9);
+      /* 火燙＝球被打得比較差，所以動的是被安打與被全壘打，ERA 由零件重算。 */
+      { const hk=Number.isFinite(st.pH)?'pH':'H';
+        st[hk]=Math.max(0,Math.round((st[hk]||0)*(1-p*0.012)));
+        if(Number.isFinite(st.pHR))st.pHR=Math.max(0,Math.round(st.pHR*(1-p*0.035)));
+        syncEra(st,seasonLv); }
       if(!isSP()){ /* 救援/勝敗不可超過出賽數(物理約束) */
         const gp=pitG(st);
         st.SV=Math.min(st.SV||0,Math.floor(gp*0.85));
@@ -496,8 +546,10 @@ export function proSeason(){
       st.SO=Math.max(0,st.SO-Math.round(q*6));
       st.W=Math.max(0,st.W-Math.round(q*.3));
       if(!isSP())st.SV=Math.max(0,(st.SV||0)-Math.round(q*.4));
-      st.era=st.IP>0?clamp(st.era+q*.08,1.40,9.90):st.era;
-      st.ER=Math.round(st.era*st.IP/9);
+      { const hk=Number.isFinite(st.pH)?'pH':'H';
+        st[hk]=Math.max(0,Math.round((st[hk]||0)*(1+q*0.012)));
+        if(Number.isFinite(st.pHR))st.pHR=Math.round(st.pHR*(1+q*0.035));
+        syncEra(st,seasonLv); }
     }
     if(p<0&&batSide){
       const q=Math.abs(p), loseH=Math.min(st.H,Math.round(q*2));
@@ -510,8 +562,11 @@ export function proSeason(){
   S.pendStat=0;
   /* 投法對成績的加成/折損 */
   if((S.pos==='P'||S.pos==='TW')&&S.seasonFactor>0){ const em={'全力投':1,'普通投':0,'養生球':-1}[S.effort]||0;
-    if(em!==0){ st.era=clamp(st.era-em*0.25,1.40,9.90); st.ER=Math.round(st.era*st.IP/9);
+    if(em!==0){ const hk=Number.isFinite(st.pH)?'pH':'H';
+      st[hk]=Math.max(0,Math.round((st[hk]||0)*(1-em*0.030)));
+      if(Number.isFinite(st.pHR))st.pHR=Math.max(0,Math.round(st.pHR*(1-em*0.08)));
       st.SO=Math.round(st.SO*(1+em*0.06));
+      syncEra(st,S.lv);
       /* 投法只影響投球側:二刀流的 st.d 是兩側合成的，加完再重算一次。 */
       if(S.pos==='TW'){ st.dPit+=em; st.d=twoWayD(st.dPit,st.dBat); } else st.d+=em; } }
   if(S.traits.onetool&&S.seasonFactor>0){ /* 工具人:那項工具讓他「多爭取」到代打/代跑/代守上場(加成,非砍半) */

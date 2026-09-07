@@ -44,17 +44,74 @@ export const MLB_TEAMS=['洛城藍電','聖港修士','灣區大人','紐約帝�
    (143/6 = 23.8 vs 120/5 = 24.0)；大聯盟五人輪值 162 場 = 32.4 輪，比中職多 35%。
    舊版的先發場次公式沒有這一項，導致三個聯盟的先發都投 25~30 場、約 150 局，
    但獎項門檻、TJ 負荷、薪資工作量四處都假設局數會隨聯盟放大——矛盾就出在這裡。 */
+/* ── 聯盟環境（env）──
+   每一項都是兩個錨點：par 的球員打出「聯盟平均」，能力 80 的球員打出「聯盟頂尖」，
+   中間線性內插（見 envRate）。舊版把 6.2 K/9、4.6 BB/9、9.2 H/9、.252 打擊率、
+   1.0% 全壘打率全部寫死，只靠「− par」表達聯盟差異，於是每個聯盟的平均球季長得
+   一模一樣，而且 0.075 的全壘打上限只有中職碰得到（需要力量 73.5，日職要 82.5、
+   大聯盟要 88.5，可是能力上限是 80）——最強的聯盟反而是全壘打天花板最低的。
+
+   三個頂級聯盟的數字對齊真實世界（2025~2026 球季）：
+     大聯盟 打擊率 .244／每 29.0 個打數一轟(3.40%)／ERA 4.17／K9 8.5／BB9 3.4／H9 8.3
+     日職　 打擊率 .244／1.91%／ERA 3.01／K9 7.29／BB9 2.67／H9 8.22
+     中職　 打擊率 .259／1.59%／ERA ~3.7／K9 ~6.6／BB9 ~2.87／H9 ~9.1
+   中職的投手側是從打者端聯盟總和反推的(中職沒有跨聯盟賽,兩邊是同一組數字)。
+   中職的長打刻意抬高一檔(全壘打王 25 → 滿檔砲約 30 支)：那是遊戲手感的取捨，
+   其餘照真實。順序是對的——大聯盟長打最多、中職最少但打擊率最高。
+
+   二軍與小聯盟沒有公開的完整聯盟數據，依各級的性質給值：小聯盟三振多、四死多，
+   二軍的長打比一軍少。 */
 export const LV={
- CPBL2:{n:'中職二軍',par:34,min:30,g:80, rot:5,org:'CPBL'},
- CPBL1:{n:'中職一軍',par:44,min:41,g:120,rot:5,org:'CPBL',top:'CPBL'},
- NPB2:{n:'日職二軍',par:47,min:44,g:100,rot:6,org:'NPB'},
- NPB1:{n:'日職一軍',par:53,min:50,g:143,rot:6,org:'NPB',top:'NPB'},
- R:{n:'新人聯盟',par:41,min:39,g:55, rot:5,org:'MiLB'},
- A1:{n:'1A',par:45,min:43,g:110,rot:5,org:'MiLB'},
- A2:{n:'2A',par:49,min:47,g:120,rot:5,org:'MiLB'},
- A3:{n:'3A',par:54,min:52,g:130,rot:5,org:'MiLB'},
- MLB:{n:'大聯盟',par:59,min:56,g:162,rot:5,org:'MiLB',top:'MLB'},
+ CPBL2:{n:'中職二軍',par:34,min:30,g:80, rot:5,org:'CPBL',
+   env:{avg:.265,avgTop:.360,hr:.016,hrTop:.062,k9:6.3,k9Top:9.0, bb9:3.30,bb9Top:2.10,h9:9.4, h9Top:6.8, era:4.20}},
+ CPBL1:{n:'中職一軍',par:44,min:41,g:120,rot:5,org:'CPBL',top:'CPBL',
+   env:{avg:.259,avgTop:.353,hr:.019,hrTop:.073,k9:6.6,k9Top:9.5, bb9:2.87,bb9Top:1.80,h9:9.1, h9Top:6.5, era:3.72}},
+ NPB2:{n:'日職二軍',par:47,min:44,g:100,rot:6,org:'NPB',
+   env:{avg:.250,avgTop:.335,hr:.017,hrTop:.070,k9:7.0,k9Top:9.8, bb9:3.10,bb9Top:1.70,h9:8.5, h9Top:6.2, era:3.40}},
+ NPB1:{n:'日職一軍',par:53,min:50,g:143,rot:6,org:'NPB',top:'NPB',
+   env:{avg:.244,avgTop:.330,hr:.019,hrTop:.083,k9:7.29,k9Top:10.5,bb9:2.67,bb9Top:1.30,h9:8.22,h9Top:5.80,era:3.01}},
+ R:{n:'新人聯盟',par:41,min:39,g:55, rot:5,org:'MiLB',
+   env:{avg:.252,avgTop:.345,hr:.022,hrTop:.068,k9:8.8,k9Top:11.5,bb9:4.20,bb9Top:2.40,h9:8.6, h9Top:6.4, era:4.60}},
+ A1:{n:'1A',par:45,min:43,g:110,rot:5,org:'MiLB',
+   env:{avg:.252,avgTop:.340,hr:.024,hrTop:.073,k9:8.7,k9Top:11.5,bb9:3.80,bb9Top:2.10,h9:8.5, h9Top:6.3, era:4.40}},
+ A2:{n:'2A',par:49,min:47,g:120,rot:5,org:'MiLB',
+   env:{avg:.250,avgTop:.335,hr:.027,hrTop:.079,k9:8.6,k9Top:11.6,bb9:3.60,bb9Top:1.90,h9:8.5, h9Top:6.2, era:4.30}},
+ A3:{n:'3A',par:54,min:52,g:130,rot:5,org:'MiLB',
+   env:{avg:.249,avgTop:.335,hr:.030,hrTop:.086,k9:8.4,k9Top:11.6,bb9:3.50,bb9Top:1.70,h9:8.6, h9Top:6.1, era:4.30}},
+ MLB:{n:'大聯盟',par:59,min:56,g:162,rot:5,org:'MiLB',top:'MLB',
+   env:{avg:.244,avgTop:.340,hr:.034,hrTop:.089,k9:8.5,k9Top:12.0,bb9:3.40,bb9Top:1.30,h9:8.3, h9Top:5.90,era:4.17}},
 };
+/* 生涯評價那一端用得到的：把 bucket(CPBL/NPB/MLB/MINOR)換成該聯盟的環境。 */
+export const TOP_LV={CPBL:'CPBL1',NPB:'NPB1',MLB:'MLB',MINOR:'A3'};
+export const envOf=b=>LV[TOP_LV[b]||'CPBL1'].env;
+/* 該聯盟的平均 WHIP（被安打＋四死球 ÷ 9）。 */
+export const envWhip=E=>(E.h9+E.bb9)/9;
+/* 聯盟平均 OPS。上壘率用聯盟打擊率加一個典型的四死球率(8.5% 的打席)還原，
+   長打率用 slgOf 的同一套二三壘打估法，全部從 env 推得，不再另外寫死一個數字。
+   推得的值：中職 .705／日職 .672／大聯盟 .713，與實測的 .682／.656／.702
+   有一個固定的 +.02 偏移(這裡沒有把出局的打席算進分母)。三個聯盟同方向同幅度，
+   所以拿來當「相對聯盟水準」的尺沒有問題。 */
+export function envLeagueOps(E){
+  const bbRate=0.085, ab=1-bbRate;                 /* 每打席:8.5% 四死,其餘為打數 */
+  const h=E.avg*ab, hr=E.hr*ab;
+  const nonHR=Math.max(0,h-hr), d2=nonHR*0.22, d3=nonHR*0.03;
+  const tb=(nonHR-d2-d3)+d2*2+d3*3+hr*4;
+  return (h+bbRate)+tb/ab;
+}
+/* 能力值換算成率值：par 對到聯盟平均、80 對到聯盟頂尖，中間線性內插。
+   低於 par 的那一側只用一半斜率——遠低於水準的人再外插下去會跑出不可能的數字，
+   而且他本來就會被降級，不需要在這裡把他算得更慘。 */
+export function envRate(base,top,ability,par){
+  const t=(ability-par)/Math.max(1,80-par);
+  return base+(top-base)*(t>=0?t:t*0.5);
+}
+/* 聯盟平均的被全壘打率(每 9 局)。由打者端反推,兩邊不會各說各話:
+   被全壘打 ÷ 被安打 ＝ 聯盟的全壘打率 ÷ 聯盟打擊率。 */
+export function envHR9(E){ return E.h9*(E.hr/E.avg); }
+/* FIP 骨架。ERA 由這個式子加上被安打偏差反推，不再獨立擲。 */
+export function fipCore(hr9,bb9,k9){ return (13*hr9+3*bb9-2*k9)/9; }
+/* 讓 par 的投手正好投出聯盟平均 ERA 的常數。 */
+export function envEraC(E){ return E.era-fipCore(envHR9(E),E.bb9,E.k9); }
 /* 先發輪次相對「中職一軍 24 輪」的倍率，供先發場次公式使用。 */
 export function spLoad(lv){ const L=LV[lv]; if(!L)return 1; return ((L.g||120)/(L.rot||5))/24; }
 export const PATHS={CPBL:['CPBL2','CPBL1'],NPB:['NPB2','NPB1'],MiLB:['R','A1','A2','A3','MLB']};
