@@ -195,7 +195,9 @@ globalThis.__autoAlloc=function(){
 
 /* ───────── 跑一整段生涯 ───────── */
 function onePlaythrough(pos,arch,seed,alloc,want){
-  A=Object.assign({},ARCH[arch],{ambition:true}); ALLOC=alloc;
+  /* STAY=1：一律拒絕旅外，留在中職打完整段生涯。用來驗「留在弱聯盟刷數據」
+     會不會反而比旅外好——那是聯盟折算(LEAGUE_K)該擋住的事。 */
+  A=Object.assign({},ARCH[arch],{ambition:!process.env.STAY}); ALLOC=alloc;
   rng.seedInit(seed);
   timeline.resetTL();   /* TL 是模組層陣列，不重置會跨生涯累積 */
   const S=stM.newState('測',1,pos,null); stM.setS(S);

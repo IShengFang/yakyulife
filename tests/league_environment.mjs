@@ -1,12 +1,21 @@
-/* 聯盟環境：par 的球員要打出聯盟平均、能力 80 的球員要打出聯盟頂尖，
-   而且 ERA 與 WHIP 必須同進同退。
+/* 聯盟環境：par 的球員要打出聯盟平均、ERA 與 WHIP 必須同進同退，
+   而且「同一個球員在越弱的聯盟越無雙」。
 
-   舊版把 6.2 K/9、4.6 BB/9、9.2 H/9、.252 打擊率、1.0% 全壘打率全部寫死，
-   只靠「− par」表達聯盟差異，於是三個聯盟的平均球季長得一模一樣；
+   這支測試改過兩次，兩次都是因為模型錯了：
+
+   第一版（v1.6.0 之前）把 6.2 K/9、4.6 BB/9、9.2 H/9、.252 打擊率、1.0% 全壘打率
+   全部寫死，只靠「− par」表達聯盟差異，於是三個聯盟的平均球季長得一模一樣；
    而 ERA 是獨立擲的，跟被安打／四死球無關，par 的投手會同時印出
    WHIP 1.53 與 ERA 4.32——同一列上的兩個數字互相打臉。
 
-   對照的真實數字見 data/teams.js 的 env 註解。 */
+   第二版（v1.6.1）改成「兩個錨點內插」：par 對聯盟平均、能力 80 對該聯盟的頂尖。
+   看起來合理，其實把同一件事講了兩次而且方向相反——par 已經在表達聯盟強弱了。
+   實測同一個球員（能力完全不動）：力量 80 在中職 30 轟、日職 43 轟、大聯盟 51 轟。
+   大聯盟的頂級砲手來中職只能敲 30 轟，這是不可能的。所以那一版的第 ⑥ 條
+   「大聯盟 > 日職 > 中職」測的正好是錯的東西，現在整條反過來。
+
+   v1.6.2 改成一條共用的指數曲線，只吃「你比這個聯盟的水準強多少」。
+   對照的真實數字與三個錨點見 data/teams.js 的 env 註解。 */
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 
@@ -50,20 +59,24 @@ try{
         Object.assign(s,{stage:'PRO',lv,org:LV[lv].top,orgTeam:'X',dpos:'1B',seasonFactor:1,age:27});
         Object.assign(s.ab,{sta:ab,con:ab,pow:ab,spd:ab,eye:ab,rng:60,fld:60,arm:60}); state.setS(s);
         const st=season.simSeason(lv);
-        o.push({avg:st.AB?st.H/st.AB:0,HR:st.HR}); }
+        o.push({avg:st.AB?st.H/st.AB:0,HR:st.HR,AB:st.AB,
+          hrRate:st.AB?st.HR/st.AB:0}); }
       return o; };
 
     const out={};
     for(const lv of ['CPBL1','NPB1','MLB']){
       const E=LV[lv].env, par=LV[lv].par;
-      const P=pit(lv,par,300), P80=pit(lv,80,120);
+      const P=pit(lv,par,300), P80=pit(lv,80,120), Plow=pit(lv,30,120);
       const B=bat(lv,par,300), B80=bat(lv,80,300);
       out[lv]={env:{era:E.era,whip:+envWhip(E).toFixed(3),k9:E.k9,bb9:E.bb9,h9:E.h9,avg:E.avg},
         par:{era:+med(P.map(x=>x.era)).toFixed(2),whip:+med(P.map(x=>x.whip)).toFixed(3),
              k9:+med(P.map(x=>x.k9)).toFixed(2),bb9:+med(P.map(x=>x.bb9)).toFixed(2),
              h9:+med(P.map(x=>x.h9)).toFixed(2),avg:+med(B.map(x=>x.avg)).toFixed(3)},
         top:{era:+med(P80.map(x=>x.era)).toFixed(2),HR:med(B80.map(x=>x.HR)),
+             hrRate:+med(B80.map(x=>x.hrRate)).toFixed(4),
              avg:+med(B80.map(x=>x.avg)).toFixed(3)},
+        low:{era:+med(Plow.map(x=>x.era)).toFixed(2),
+             whip:+med(Plow.map(x=>x.whip)).toFixed(3)},
         hrAllowed:{always:P.every(x=>Number.isFinite(x.pHR)),
                    leHits:P.every(x=>x.pHR<=x.pH)},
         eraStable:P.every(x=>Math.abs(x.reEra-x.era)<0.02),
@@ -93,9 +106,18 @@ try{
     assert.equal(x.hrAllowed.always,true,`${lv} 沒有產生被全壘打 pHR`);
     assert.equal(x.hrAllowed.leHits,true,`${lv} 被全壘打超過被安打`);
 
-    /* ④ 能力 80 ＝ 聯盟頂尖：ERA 要壓到聯盟平均的一半上下，打擊率要摸到打擊王 */
-    assert.ok(x.top.era<x.env.era*0.62,`${lv} 滿檔投手壓不下去：${x.top.era} vs 聯盟 ${x.env.era}`);
+    /* ④ 能力 80 ＝ 遠遠高於這個聯盟的水準，成績必須跟著誇張 */
+    assert.ok(x.top.era<x.env.era*0.55,`${lv} 滿檔投手壓不下去：${x.top.era} vs 聯盟 ${x.env.era}`);
     assert.ok(x.top.avg>x.env.avg*1.28,`${lv} 滿檔打者的打擊率不夠高：${x.top.avg}`);
+
+    /* ④b 往下那一側不能指數崩壞。指數曲線兩邊對稱的話，能力 30 的投手會投出
+       中職 WHIP 1.98／大聯盟 2.37——真實世界投滿一季不存在 2.0 以上的 WHIP。
+       ENV_DOWN 就是在收這一側（同一組能力現在是 1.57／1.87）。
+       大聯盟那個數字本來就該比中職難看：能力 30 對 par 59 差了 29 點。 */
+    assert.ok(x.low.whip<2.00,`${lv} 低於水準的投手崩到不存在的 WHIP：${x.low.whip}`);
+    assert.ok(x.low.whip<x.env.whip*1.50,
+      `${lv} 低於水準的投手崩得太誇張：WHIP ${x.low.whip} vs 聯盟 ${x.env.whip}`);
+    assert.ok(x.low.era>x.env.era,`${lv} 低於水準的投手 ERA 應該比聯盟平均差：${x.low.era}`);
 
     /* ⑤ 門檻表要跟著聯盟走，而且級距順序正確 */
     const t=x.th;
@@ -104,14 +126,25 @@ try{
     assert.ok(t.keep.era>t.pitch.era2,`${lv} 降級免疫應該比「評等2」寬鬆`);
   }
 
-  /* ⑥ 三個聯盟的長打環境順序：大聯盟 > 日職 > 中職。舊版是反的——
-     0.075 的上限只有中職碰得到，最強的聯盟反而是天花板最低的。 */
-  const hr=L.map(lv=>r[lv].top.HR);
-  assert.ok(hr[2]>hr[1]&&hr[1]>hr[0],
-    `滿檔砲的全壘打順序不是「大聯盟 > 日職 > 中職」：中職 ${hr[0]}／日職 ${hr[1]}／大聯盟 ${hr[2]}`);
-  assert.ok(hr[0]>=25&&hr[0]<=36,'中職滿檔砲應該落在 30 支上下：'+hr[0]);
-  assert.ok(hr[1]>=34&&hr[1]<=47,'日職滿檔砲應該落在 40 支上下：'+hr[1]);
-  assert.ok(hr[2]>=43&&hr[2]<=58,'大聯盟滿檔砲應該落在 50 支上下：'+hr[2]);
+  /* ⑥ 同一個球員，在越弱的聯盟越無雙。比的是「每個打數的全壘打率」而不是支數——
+     中職一年 120 場、大聯盟 162 場，支數會被賽程長度混淆。
+
+     只驗中職對日職、中職對大聯盟這兩條。日職對大聯盟刻意不驗：日職的聯盟長打環境
+     （每打數 1.9%）比大聯盟（3.4%）低很多，par 卻只差 6 點，所以固定球員從日職
+     換到大聯盟，長打率反而會升約 15%。真實世界的證據兩邊都有（大谷升、鈴木誠也與
+     吉田正尚降），而中職那兩條才是這次要修的東西。 */
+  const rate=Object.fromEntries(L.map(lv=>[lv,r[lv].top.hrRate]));
+  assert.ok(rate.CPBL1>rate.NPB1,
+    `同一個砲手在中職的長打率應該高於日職：${rate.CPBL1} vs ${rate.NPB1}`);
+  assert.ok(rate.CPBL1>rate.MLB,
+    `同一個砲手在中職的長打率應該高於大聯盟：${rate.CPBL1} vs ${rate.MLB}`);
+  assert.ok(r.CPBL1.top.era<r.MLB.top.era,
+    `同一個投手在中職應該比在大聯盟更壓制：${r.CPBL1.top.era} vs ${r.MLB.top.era}`);
+
+  /* ⑥b 使用者當初的原話：「如果力量 80，中職都只能 30 轟，是一件極其不合理的事情。」
+     魔鷹在日職是單季最多 13 轟的角色球員，到中職就打出 30 轟拿全壘打王；
+     一個滿檔的砲手在中職應該遠遠超過他。 */
+  assert.ok(r.CPBL1.top.HR>=45,'中職滿檔砲應該遠超過 30 支：'+r.CPBL1.top.HR);
 
   /* ⑦ 中職是高打擊率、低長打的聯盟（真實：.259／1.59%），日職與大聯盟打擊率一樣低 */
   assert.ok(r.CPBL1.env.avg>r.NPB1.env.avg&&r.CPBL1.env.avg>r.MLB.env.avg,

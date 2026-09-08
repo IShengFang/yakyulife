@@ -1,6 +1,6 @@
 import {S} from '../core/state.js?v=1.5.12';
 import {R, ri, chance, clamp, N0} from '../core/rng.js?v=1.5.12';
-import {LV, envRate, envHR9} from '../data/teams.js?v=1.5.12';
+import {LV, envRate, envAvg, envHR9, ENV_K} from '../data/teams.js?v=1.5.12';
 import {card, choose, board} from '../ui/dom.js?v=1.5.12';
 import {tlNote} from '../ui/timeline.js?v=1.5.12';
 import {isSP, fmtIP, outsFromIP, ipFromOuts, normalizeIP, baseballERA} from './season.js?v=1.5.12';
@@ -107,10 +107,10 @@ export function maybeIntl(done){
           /* 與職業球季共用同一組聯盟環境；短期賽按實際局數縮放。
              國際賽是各國最強的一群，所以整體再往投手有利的方向推一檔(短期賽、全力投)。 */
           const E=LV[intlFmt.lv].env, hrLg=envHR9(E), q=(a.vel+a.ctl+a.brk)/3;
-          const k9=clamp(envRate(E.k9,E.k9Top,a.vel*0.62+a.brk*0.38,par)+0.6+clutch*.5,E.k9*0.5,E.k9Top*1.25);
-          const bb9=clamp(envRate(E.bb9,E.bb9Top,a.ctl,par)+N0(0.35),E.bb9Top*0.5,E.bb9*2.1);
-          const h9=clamp(envRate(E.h9,E.h9Top,q,par)-0.5+N0(0.45),E.h9Top*0.75,E.h9*1.4);
-          const hr9=clamp(envRate(hrLg,hrLg*0.45,q,par)*0.85,0.02,hrLg*2.6);
+          const k9=Math.max(1.5,envRate(E.k9,a.vel*0.62+a.brk*0.38,par,ENV_K.k9,1)+0.6+clutch*.5);
+          const bb9=Math.max(0.35,envRate(E.bb9,a.ctl,par,ENV_K.bb9,-1)+N0(0.35));
+          const h9=Math.max(3.0,envRate(E.h9,q,par,ENV_K.h9,-1)-0.5+N0(0.45));
+          const hr9=Math.max(0.02,envRate(hrLg,q,par,ENV_K.hr9,-1)*0.85);
           const era=clamp(E.era+(h9-E.h9)*0.38+(bb9-E.bb9)*0.32+(hr9-hrLg)*1.45-(k9-E.k9)*0.04
             -clutch*.35+N0(0.25),1.0,9.0);
           const pit={IP:ip,SO:Math.round(ip/9*k9),pHR:Math.round(ip/9*hr9),ER:Math.round(era*ip/9),
@@ -126,8 +126,8 @@ export function maybeIntl(done){
           const bb=Math.round(pa*clamp(0.062+(a.eye-par)*0.0034,0.045,0.17));
           const ab=pa-bb;
           /* 短期賽的投手強度高一檔，所以打擊率往下推一點、長打不動。 */
-          const avg=clamp(envRate(E.avg,E.avgTop,qb,par)-0.012+clutch*.015,0.12,0.45), h=Math.round(ab*avg);
-          const hrRate=clamp(envRate(E.hr,E.hrTop,a.pow,par)+clutch*.004,0.002,E.hrTop*1.25);
+          const avg=clamp(envAvg(E.avg,qb,par)-0.012+clutch*.015,0.12,0.45), h=Math.round(ab*avg);
+          const hrRate=Math.max(0.0012,envRate(E.hr,a.pow,par,ENV_K.hr,1)+clutch*.004);
           const hr=Math.min(h,Math.round(ab*hrRate));
           const bat={G:g,PA:pa,AB:ab,H:h,HR:hr,RBI:Math.round((hr*2.1+h*0.35)*(1+clutch*.05)),BB:bb};
           intlSt=TW?{...intlSt,...bat}:bat;

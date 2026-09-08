@@ -1,7 +1,7 @@
 import {S, blankStat, bucketOf, nextStep, stageLabel} from '../core/state.js?v=1.5.12';
 import {R, ri, chance, clamp, N0} from '../core/rng.js?v=1.5.12';
 import {POS_ADJ_RUNS, POS_PT_BAR} from '../data/abilities.js?v=1.5.12';
-import {LV, HS_CUPS, U_CUPS, spLoad, envRate, envHR9} from '../data/teams.js?v=1.5.12';
+import {LV, HS_CUPS, U_CUPS, spLoad, envRate, envAvg, envHR9, ENV_K} from '../data/teams.js?v=1.5.12';
 import {pitchTh, batTh} from '../data/thresholds.js?v=1.5.12';
 import {card, board} from '../ui/dom.js?v=1.5.12';
 import {ovr, careerAllStars, toolGap} from './ability.js?v=1.5.12';
@@ -85,7 +85,7 @@ export function eraFromComponents(st,lv){
   const E=L.env, ip=normalizeIP(st&&st.IP); if(!(ip>0))return st.era||0;
   const per9=v=>(v||0)/ip*9, hrLg=envHR9(E);
   return clamp(E.era+(per9(pitH(st))-E.h9)*0.38+(per9(pitBB(st))-E.bb9)*0.32
-    +(per9(st.pHR)-hrLg)*1.45-(per9(st.SO)-E.k9)*0.04+(st.eraLuck||0),1.20,9.90);
+    +(per9(st.pHR)-hrLg)*1.45-(per9(st.SO)-E.k9)*0.04+(st.eraLuck||0),0.60,9.90);
 }
 /* 重算 ERA 並讓自責分跟著走。任何動到投球零件的地方，收尾都呼叫這一支。 */
 export function syncEra(st,lv){
@@ -139,15 +139,15 @@ export function simSeason(lv){
       st[gK]=Math.max(1,Math.round(clamp(45+(Math.min(a.sta,60)-40)*0.3,25,68)*f*perfF*(0.94+R()*0.08)*(TW?share.pit:1))); /* 高體力後援:出賽數貢獻以 sta60 封頂,不會貼近先發工作量 */
       st.IP=+(st[gK]*1.05).toFixed(1);
     }
-    /* 四個率值全部由聯盟環境內插(見 teams.js 的 env)：par 的投手投出聯盟平均、
-       能力 80 投出聯盟頂尖。舊版把 6.2/4.6/9.2 寫死、只靠「− par」表達聯盟差異，
-       於是三個聯盟的平均球季長得一模一樣——中職一軍跟大聯盟的平均投手都是 6.2 K/9。
-       三振看球速與變化球，四死看控球，被安打與被全壘打看整體實力。 */
+    /* 四個率值都是「該聯盟平均 × exp(±k × (能力 − par))」(見 teams.js 的 env 與 ENV_K)。
+       同一個球員降一級 par 掉 15 點，指數項整個放大——這才是真實世界的樣子。
+       三振看球速與變化球，四死看控球，被安打與被全壘打看整體實力。
+       刻意沒有上限，平衡交給 economy.js 的聯盟折算。 */
     const E=L.env, hrLg=envHR9(E);
-    const k9=clamp(envRate(E.k9,E.k9Top,a.vel*0.62+a.brk*0.38,par)+N0(0.45),E.k9*0.42,E.k9Top*1.18);
-    const bb9=clamp(envRate(E.bb9,E.bb9Top,a.ctl,par)+N0(0.35),E.bb9Top*0.52,E.bb9*2.10);
-    const h9=clamp(envRate(E.h9,E.h9Top,q,par)+N0(0.45),E.h9Top*0.80,E.h9*1.42);
-    const hr9=clamp(envRate(hrLg,hrLg*0.45,q,par)*(0.82+R()*0.36),0.02,hrLg*2.6);
+    const k9=Math.max(1.5,envRate(E.k9,a.vel*0.62+a.brk*0.38,par,ENV_K.k9,1)+N0(0.45));
+    const bb9=Math.max(0.35,envRate(E.bb9,a.ctl,par,ENV_K.bb9,-1)+N0(0.35));
+    const h9=Math.max(3.2,envRate(E.h9,q,par,ENV_K.h9,-1)+N0(0.45));
+    const hr9=Math.max(0.02,envRate(hrLg,q,par,ENV_K.hr9,-1)*(0.82+R()*0.36));
     st.SO=Math.round(st.IP/9*k9);
     st[bbK]=Math.round(st.IP/9*bb9);
     st[hK]=Math.round(st.IP/9*h9);
@@ -204,13 +204,14 @@ export function simSeason(lv){
     st._dh=S.dpos==='DH'; /* 只有正式登錄為 DH 的球季才按 DH 結算。 */
     st.BB=Math.round(st.PA*clamp(0.062+(a.eye-par)*0.0034,0.045,0.17));
     st.AB=st.PA-st.BB;
-    /* 打擊率與全壘打率同樣由聯盟環境內插。全壘打只看力量——Contact 高不會變成全壘打，
-       它走的是打擊率那條線。舊版的 0.075 上限只有中職碰得到(需要力量 73.5，日職 82.5、
-       大聯盟 88.5，但能力上限是 80)，所以最強的聯盟反而是長打天花板最低的。 */
+    /* 打擊率與全壘打率同樣是「聯盟平均 ＋ 相對 par 的成長」。全壘打只看力量——
+       Contact 高不會變成全壘打，它走的是打擊率那條線。
+       打擊率有上界，所以用飽和曲線；全壘打率沒有上限，一個大聯盟等級的砲手
+       掉到中職就是會打出六十轟，那是對的。 */
     const E=L.env;
-    st.avg=clamp(envRate(E.avg,E.avgTop,q,par)+(a.sta-50)*0.0003+N0(0.014),0.150,0.400);
+    st.avg=clamp(envAvg(E.avg,q,par)+(a.sta-50)*0.0003+N0(0.014),0.150,0.430);
     st.H=Math.round(st.AB*st.avg); st.avg=st.AB?st.H/st.AB:0;
-    st.HR=Math.round(st.AB*clamp(envRate(E.hr,E.hrTop,a.pow,par),0.0015,E.hrTop*1.25)*(0.85+R()*0.3));
+    st.HR=Math.round(st.AB*Math.max(0.0012,envRate(E.hr,a.pow,par,ENV_K.hr,1))*(0.85+R()*0.3));
     const fullSeasonSB=clamp((a.spd-45)*0.5+(a.spd-par)*1.3+N0(4),0,70);
     st.SB=scaledSteals(fullSeasonSB,st.PA,L.g); /* 盜壘依實際打席機會縮放，不能只打十幾場卻跑出完整球季產量。 */
     st.RBI=Math.round(st.HR*2.1+(st.H-st.HR)*0.30);
