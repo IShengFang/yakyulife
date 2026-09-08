@@ -8,7 +8,7 @@ import {card, choose, board, divider} from '../ui/dom.js?v=1.5.12';
 import {tlNote, tlPush, tlRestage} from '../ui/timeline.js?v=1.5.12';
 import {allocUI} from '../ui/alloc.js?v=1.5.12';
 import {addAb, ovr, ovrPit, ovrBat, dposReview, statBonusTxt} from '../engine/ability.js?v=1.5.12';
-import {rollInjury, tjCap} from '../engine/injury.js?v=1.5.12';
+import {rollInjury, tjCap, tjEffortMult} from '../engine/injury.js?v=1.5.12';
 import {isMrTeamEligible} from '../engine/tenure.js?v=1.5.12';
 import {amateurSeason, proSeason, slgOf, currentSalaryRating, baseballERA, baseballWHIP, seasonGrade} from '../engine/season.js?v=1.5.12';
 import {championshipChance} from '../engine/championship.js?v=1.5.12';
@@ -229,12 +229,13 @@ export function phasePre(){
       /* 二刀流沿用同一張面板，但它同時決定投球場次與打擊出賽——這才是每一季要重做的
          平衡取捨(見 docs/twoway-design.md §5)。單刀的三個選項維持原樣。 */
       const opts=S.pos==='TW'
-        ? [{t:'以投為主',warn:true,s:'先發場次 85%｜打擊出賽 90%｜TJ 累積 ×1.45',f:()=>{S.effort='全力投';preAsk();}},
-           {t:'投打並重',main:true,s:'先發場次 70%｜打擊全勤｜TJ 累積 ×1.25',f:()=>{S.effort='普通投';preAsk();}},
-           {t:'以打為主',s:'先發場次 50%｜打擊全勤｜TJ 累積 ×1.10',f:()=>{S.effort='養生球';preAsk();}}]
-        : [{t:'全力投',warn:true,s:'成績最佳｜手臂負荷最大（TJ 累積 ×1.30）',f:()=>{S.effort='全力投';preAsk();}},
+        /* 倍數一律從引擎的常數表讀，不要在文案裡再抄一份數字。 */
+        ? [{t:'以投為主',warn:true,s:`先發場次 85%｜打擊出賽 90%｜TJ 累積 ×${tjEffortMult('TW','全力投').toFixed(2)}`,f:()=>{S.effort='全力投';preAsk();}},
+           {t:'投打並重',main:true,s:`先發場次 70%｜打擊全勤｜TJ 累積 ×${tjEffortMult('TW','普通投').toFixed(2)}`,f:()=>{S.effort='普通投';preAsk();}},
+           {t:'以打為主',s:`先發場次 50%｜打擊全勤｜TJ 累積 ×${tjEffortMult('TW','養生球').toFixed(2)}`,f:()=>{S.effort='養生球';preAsk();}}]
+        : [{t:'全力投',warn:true,s:`成績最佳｜手臂負荷最大（TJ 累積 ×${tjEffortMult('P','全力投').toFixed(2)}）`,f:()=>{S.effort='全力投';preAsk();}},
            {t:'普通投',main:true,s:'標準強度｜TJ 累積正常',f:()=>{S.effort='普通投';preAsk();}},
-           {t:'養生球',s:'成績保守｜省手臂（TJ 累積 ×0.80）',f:()=>{S.effort='養生球';preAsk();}}];
+           {t:'養生球',s:`成績保守｜省手臂（TJ 累積 ×${tjEffortMult('P','養生球').toFixed(2)}）`,f:()=>{S.effort='養生球';preAsk();}}];
       choose(`${S.pos==='TW'?'開季投打配比':'開季投球規劃'}（手臂狀況：${arm}）`,opts);
     };
   }
