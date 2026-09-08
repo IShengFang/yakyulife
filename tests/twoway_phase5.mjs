@@ -82,19 +82,27 @@ try{
     const P=side('pit'), B=side('bat');
     const table=career.statTables('CPBL');
 
-    /* 逐年板(遊戲中的「逐年」分頁)：六格裡投打各佔三格 */
+    /* 逐年板(遊戲中的「逐年」分頁)：二刀流有投／打切換，切到哪一側就是該側完整六欄 */
     const dom=await import('./src/ui/dom.js?v=1.5.12');
     dom.board(1);
     const bd=document.getElementById('bd-detail');
-    let boardHd=[],boardRow=[];
     const bdRoot=document.getElementById('board');
     if(bdRoot)bdRoot.classList.add('detail-open');   /* detailSync 只在展開時才重畫 */
-    if(bd){ bd.dataset.tab='y'; dom.detailSync();
+    const readBoard=()=>{
       const rows=[...bd.querySelectorAll('.sec-y .bd-yr')];
       const head=rows.find(x=>x.classList.contains('hd'));
-      if(head)boardHd=[...head.querySelectorAll('.n')].map(x=>x.textContent.trim());
-      const first=rows.filter(x=>!x.classList.contains('hd')).pop();
-      if(first)boardRow=[...first.querySelectorAll('.n')].map(x=>x.textContent.trim());
+      const body=rows.filter(x=>!x.classList.contains('hd'));
+      return {hd:head?[...head.querySelectorAll('.n')].map(x=>x.textContent.trim()):[],
+        rows:body.length, sides:[...bd.querySelectorAll('.sec-y .ys')].map(b=>b.textContent.trim()),
+        on:[...bd.querySelectorAll('.sec-y .ys.on')].map(b=>b.dataset.ys)[0]||null};
+    };
+    let boardPit={},boardBat={},boardClick=false;
+    if(bd){ bd.dataset.tab='y'; delete bd.dataset.yside; dom.detailSync();
+      boardPit=readBoard();
+      /* 真的點下去，而不是直接改 dataset——要順便驗事件有掛上 */
+      const btn=[...bd.querySelectorAll('.sec-y .ys')].find(b=>b.dataset.ys==='bat');
+      if(btn){ boardClick=true; btn.click(); }
+      boardBat=readBoard();
     }
 
     /* 結算圖：三個模式都要畫得出來，而且欄位是二刀流的那一組 */
@@ -125,7 +133,7 @@ try{
     state.setS(p);
     const cardSolo=season.statCardHTML(ps,'新北騎士');
 
-    return {soloP,twSeason,view,P,B,table,boardHd,boardRow,img,prose,cardTW,cardSolo,tagline};
+    return {soloP,twSeason,view,P,B,table,boardPit,boardBat,boardClick,img,prose,cardTW,cardSolo,tagline};
   });
 
   /* ── ① 單刀投手沒有被誤判成二刀流 ── */
@@ -187,10 +195,18 @@ try{
   assert.ok(/投球/.test(r.table)&&/打擊/.test(r.table),'生涯累積數據沒有拆成投打兩張');
   assert.equal((r.table.match(/<table/g)||[]).length,2,'生涯累積數據應該是兩張表');
 
-  /* ── ④ 逐年板：六格裡投打各三格 ── */
-  assert.deepEqual(r.boardHd,['IP','W-L','ERA','PA','HR','AVG'],'逐年板的欄位不是二刀流那一組');
-  assert.equal(r.boardRow.length,6);
-  assert.equal(r.boardRow[0],'-','轉回之後的球季在逐年板上，投球側要印 -');
+  /* ── ④ 逐年板：投／打切換，各自是該側完整的六欄 ── */
+  assert.equal(r.boardClick,true,'逐年板上找不到投／打切換按鈕');
+  assert.deepEqual(r.boardPit.sides,['投球','打擊'],'切換按鈕的標籤不對');
+  assert.equal(r.boardPit.on,'pit','逐年板預設應該停在投球側');
+  assert.deepEqual(r.boardPit.hd,['G','IP','W-L','SV','SO','ERA'],
+    '投球側的逐年板欄位應該跟單刀投手一模一樣');
+  assert.equal(r.boardBat.on,'bat','點了打擊之後沒有切過去');
+  assert.deepEqual(r.boardBat.hd,['G','PA','AVG','HR','RBI','OPS'],
+    '打擊側的逐年板欄位應該跟單刀野手一模一樣');
+  /* 切到投球側只列真的登板過的球季；打擊側三季都在 */
+  assert.equal(r.boardPit.rows,2,'投球側的逐年板應該只有登板過的球季：'+r.boardPit.rows);
+  assert.equal(r.boardBat.rows,3,'打擊側的逐年板應該有全部三個球季：'+r.boardBat.rows);
 
   /* ── ⑤ 結算圖：每一種表都畫兩張 ── */
   const drew=(xs,t)=>xs.some(x=>x.includes(t));
@@ -221,6 +237,7 @@ try{
   assert.equal((r.cardSolo.match(/class="statline/g)||[]).length,1,'單刀球員的球季數據卡仍是一個框');
 
   console.log(JSON.stringify({soloP:r.soloP,twSeason:r.twSeason,
-    hd:{pitCum:r.P.cum.hd,batCum:r.B.cum.hd,pitPro:r.P.pro.hd,batPro:r.B.pro.hd,board:r.boardHd},
+    hd:{pitCum:r.P.cum.hd,batCum:r.B.cum.hd,pitPro:r.P.pro.hd,batPro:r.B.pro.hd,
+        boardPit:r.boardPit.hd,boardBat:r.boardBat.hd},
     rows:{pit:r.P.pro.blocks.flatMap(b=>b.rows).length,bat:r.B.pro.blocks.flatMap(b=>b.rows).length}},null,2));
 }finally{ await browser.close(); }

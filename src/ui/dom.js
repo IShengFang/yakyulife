@@ -8,7 +8,7 @@ import {TEAM_COLOR, LV} from '../data/teams.js?v=1.5.12';
 import {TRAIT_KEYS, TRAIT_FX} from '../data/traits.js?v=1.5.12';
 import {playerName, stageLabel} from '../core/state.js?v=1.5.12';
 import {salParts, fmtMoney} from '../engine/contract.js?v=1.5.12';
-import {roleN, fmtIP, slgOf, baseballERA} from '../engine/season.js?v=1.5.12';
+import {roleN, fmtIP, slgOf, baseballERA, pitG} from '../engine/season.js?v=1.5.12';
 import {honorGroups, yearRanges, twoWayView, twHasPit, twHasBat} from '../engine/career.js?v=1.5.12';
 import {isChampionshipYear} from '../engine/championship.js?v=1.5.12';
 import {playerType, ovr} from '../engine/ability.js?v=1.5.12';
@@ -271,37 +271,47 @@ function secTraits(){
     (out.length?`<div class="bd-tw">${out.join('')}</div>`
                :'<div class="bd-none">還沒有覺醒任何隱藏屬性。</div>')+`</div>`;
 }
+/* 逐年分頁目前顯示哪一側（只有二刀流會用到）。存在面板的 dataset 上，
+   detailSync() 重畫時沿用，切頁或 board() 刷新都不會被打回投球側。 */
+function logSide(){
+  const d=$('bd-detail');
+  return (d&&d.dataset.yside==='bat')?'bat':'pit';
+}
 function secLog(){
-  const L=S.log||[], TW=twoWayView(), isP=!TW&&S.pos==='P';
+  const L=S.log||[], TW=twoWayView(), side=logSide();
+  /* 二刀流：這條帶子只有六格，塞不下兩側，所以改成「點一下切投／打」，
+     切到哪一側就用回該側完整的六欄——跟單刀投手／野手看到的一模一樣。
+     舊版是投打各佔三格，等於兩邊都被砍半，而且同一列上兩組數字混在一起。 */
+  const isP=TW?side==='pit':S.pos==='P';
   const yearHTML=y=>{ const crown=isChampionshipYear(S.honors,y)
     ?'<span class="champ-crown" title="該年度奪冠" role="img" aria-label="冠軍"></span>':'';
     return `<span class="champ-slot">${crown}</span>${y}`; };
   /* 業餘年份沒有 st(逐項數據)，只有文字事蹟——這就是兩張表的分界 */
   const ama=L.filter(r=>!r.st), pro=L.filter(r=>r.st);
-  /* 二刀流只有六格，兩側各佔三格：投球留 IP/W-L/ERA、打擊留 PA/HR/AVG。
-     手機再收成三格時每側各留一個率(ERA、AVG)加上長打(HR)，兩側都還看得到人。 */
-  const hd=TW?['IP','W-L','ERA','PA','HR','AVG']
-           :isP?['G','IP','W-L','SV','SO','ERA']:['G','PA','AVG','HR','RBI','OPS'];
-  const drop=TW?[1,1,0,1,0,0]
-           :isP?[1,0,0,1,1,0]:[1,1,0,0,1,0]; /* 手機留 3 欄:投手 IP/W-L/ERA、野手 AVG/HR/OPS */
+  const hd=isP?['G','IP','W-L','SV','SO','ERA']:['G','PA','AVG','HR','RBI','OPS'];
+  const drop=isP?[1,0,0,1,1,0]:[1,1,0,0,1,0]; /* 手機留 3 欄:投手 IP/W-L/ERA、野手 AVG/HR/OPS */
   const cells=v=>v.map((t,i)=>`<span class="n${drop[i]?' opt':''}">${t}</span>`).join('');
+  /* 切換掛在「職業」那一列，不掛在小標上——小標在手機版是 display:none
+     （手機用分頁列取代標題），掛上去玩家就看不到了。而且它就在它控制的那張表正上方。 */
+  const sideBtns=TW?`<span class="bd-yside">`+
+    [['pit','投球'],['bat','打擊']].map(([k,n])=>
+      `<button type="button" class="ys${k===side?' on':''}" data-ys="${k}">${n}</button>`).join('')+
+    `</span>`:'';
   let h=`<div class="bd-sec sec-y"><div class="bd-sh">生涯逐年成績</div>`;
   if(!L.length)h+='<div class="bd-none">還沒有完整打過一個球季。</div>';
   if(ama.length){ h+='<div class="bd-yg">業餘</div>';
     ama.forEach(r=>{ h+=`<div class="bd-yr${r.inj?' inj':''}"><span class="y">${yearHTML(r.y)}</span>`+
       `<span class="a opt">${r.age}</span><span class="tm">${esc(r.tm)}</span>`+
       `<span class="ln">${esc(r.line)}</span></div>`; }); }
-  if(pro.length){ h+='<div class="bd-yg">職業</div>'+
+  if(pro.length){ h+=`<div class="bd-yg">職業${sideBtns}</div>`+
       `<div class="bd-yr hd"><span class="y">年</span><span class="a opt">齡</span>`+
       `<span class="tm">球隊</span>${cells(hd)}</div>`;
-    pro.forEach(r=>{ const s=r.st; let v;
-      /* 轉型前後的單刀球季會跟二刀流球季混在同一張表，缺的那一側逐列印 '-'。 */
-      if(TW){ const P=twHasPit(s), B=twHasBat(s);
-        const obp=s.PA>0?(s.H+s.BB)/s.PA:null, slg=s.AB>0?slgOf(s):null;
-        v=[P?fmtIP(s.IP):'-',P?`${s.W}-${s.L}`:'-',P?F2(baseballERA(s)):'-',
-           B?s.PA:'-',B?s.HR:'-',B?F3(s.AB>0?s.H/s.AB:null):'-'];
-      } else if(isP){ const era=baseballERA(s);
-        v=[s.G,fmtIP(s.IP),`${s.W}-${s.L}`,s.SV||0,s.SO,F2(era)];
+    /* 二刀流：切到投球側就只列真的登板過的球季，打擊側只列有打席的。
+       轉型前後的單刀球季自然只會出現在它該在的那一側，不用留一排 '-'。 */
+    const use=TW?pro.filter(r=>isP?twHasPit(r.st):twHasBat(r.st)):pro;
+    use.forEach(r=>{ const s=r.st; let v;
+      if(isP){ const era=baseballERA(s);
+        v=[pitG(s),fmtIP(s.IP),`${s.W}-${s.L}`,s.SV||0,s.SO,F2(era)];
       } else { const obp=s.PA>0?(s.H+s.BB)/s.PA:null, slg=s.AB>0?slgOf(s):null;
         v=[s.G,s.PA,F3(s.AB>0?s.H/s.AB:null),s.HR,s.RBI,F3((obp!=null&&slg!=null)?obp+slg:null)]; }
       /* the compact row drops BB/WHIP/SB/DEF; the full season line stays on hover */
@@ -337,6 +347,16 @@ export function detailSync(){
   d.querySelectorAll('.bd-tab').forEach(b=>b.onkeydown=e=>{
     if(e.key!=='Enter'&&e.key!==' ')return;
     e.preventDefault(); activateTab(b,e); });
+  /* 二刀流逐年表的投／打切換。與分頁按鈕同一套處理：innerHTML 會被換掉，
+     所以要 stopPropagation，重畫後再把焦點放回同一顆按鈕。 */
+  const activateSide=(b,e)=>{
+    e.stopPropagation(); d.dataset.yside=b.dataset.ys; detailSync();
+    const nb=d.querySelector(`.ys[data-ys="${b.dataset.ys}"]`); if(nb)nb.focus();
+  };
+  d.querySelectorAll('.ys').forEach(b=>{
+    b.onclick=e=>activateSide(b,e);
+    b.onkeydown=e=>{ if(e.key!=='Enter'&&e.key!==' ')return; e.preventDefault(); activateSide(b,e); };
+  });
   d.scrollTop=sc;
   /* a board() refresh must not yank the 逐年 list back to the player's rookie year */
   const y=d.querySelector('.sec-y'); if(y&&yTop!=null)y.scrollTop=yTop;
