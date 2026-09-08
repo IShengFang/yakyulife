@@ -94,8 +94,10 @@ export function syncEra(st,lv){
   st.WHIP=normalizeIP(st.IP)>0?+(baseballWHIP(st)||0).toFixed(2):(st.WHIP||0);
   return st.era;
 }
+/* tj 是手肘磨損倍數，由 injury.js 的 tjAccrue 讀走——放在這裡是為了讓
+   「投多少、打多少、磨多少」三個數字並排在同一張表上。 */
 export const TW_EFFORT={
-  '全力投':{pit:0.85,bat:0.90,tj:1.45},
+  '全力投':{pit:0.85,bat:0.90,tj:1.55},
   '普通投':{pit:0.70,bat:1.00,tj:1.25},
   '養生球':{pit:0.50,bat:1.00,tj:1.10},
 };
@@ -104,6 +106,21 @@ export const twEffort=()=>TW_EFFORT[S.effort]||TW_EFFORT['普通投'];
    一個名額做兩份工，但不能直接相加:相加會直接衝破為單刀校準的薪資與評價曲線。
    係數留給第 3 階段的模擬校準。 */
 export function twoWayD(p,b){ return +(Math.max(p,b)+clamp(Math.min(p,b)*0.35,0,6)).toFixed(2); }
+/* 核薪用的合成係數比評價用的大。兩件事本來就不同：
+   生涯評價問的是「他有多強」，薪水問的是「他幫球隊省下幾個名額」。
+   一個中段的二刀流，打擊側照 DH 計價已經先挨了一刀(沒有守備價值)、出賽又比純打者少，
+   於是 0.35 合成出來的薪水反而輸給同級的指定打擊——他做兩份工卻領得比較少。
+   分開之後評價那條線完全不動(二刀流的名人堂率本來就是七條路線最高的，不能再加)。
+
+   係數是掃出來的。把 TW 與 DH 對齊同一個 peakCore 帶再比生涯收入（只看有站上
+   日職一軍以上的），0.35 的結果是：
+     peakCore 55~62  TW÷DH 2.38　｜　62~68  1.41　｜　68~75  0.98
+   低段與中段本來就領先（一個邊緣的指定打擊幾乎沒有價值，邊緣的二刀流還能吃局數），
+   壞掉的是頂端——頂級二刀流跟頂級指定打擊領一樣多。現實裡大谷的合約是頂級純打者
+   的 1.75 倍。0.55／上限 12 之後：2.58 ／ 1.48 ／ 1.04，p90 從 18.1 億拉到 20.6 億。
+   還沒到 1.75，但頂端終於是往上的。 */
+export const TW_PAY_K=0.55, TW_PAY_CAP=12;
+export function twoWayPayD(p,b){ return +(Math.max(p,b)+clamp(Math.min(p,b)*TW_PAY_K,0,TW_PAY_CAP)).toFixed(2); }
 export function simSeason(lv){
   if((S.pos==='P'||S.pos==='TW')&&!S.role)S.role=pitcherRole();
   const L=LV[lv], par=L.par, a=S.ab, f=S.seasonFactor;
@@ -321,7 +338,7 @@ export function seasonSalaryRating(st,lv,recordedRoleOrPos){
        投球側完全不受這個折價影響，所以不會被同一件事罰兩次。 */
     const pv=pitchPay(st,lv,recordedRoleOrPos,Number.isFinite(st.dPit)?st.dPit:st.d);
     const bv=batPay(st,lv,'DH',Number.isFinite(st.dBat)?st.dBat:st.d);
-    return +(twoWayD(pv,bv)+salaryPerformanceAdjustment(st,lv,recordedRoleOrPos)).toFixed(2);
+    return +(twoWayPayD(pv,bv)+salaryPerformanceAdjustment(st,lv,recordedRoleOrPos)).toFixed(2);
   }
   if(S.pos==='P'){
     if(!(pitG(st)>0))return st.d; /* 全年復健只交由傷後市場折價，不重複扣工作量。 */

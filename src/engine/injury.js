@@ -4,18 +4,19 @@ import {ABL, POS_AB} from '../data/abilities.js?v=1.5.12';
 import {LV} from '../data/teams.js?v=1.5.12';
 import {card, choose, board} from '../ui/dom.js?v=1.5.12';
 import {addAb} from './ability.js?v=1.5.12';
-import {isSP, pitG} from './season.js?v=1.5.12';
+import {isSP, pitG, TW_EFFORT} from './season.js?v=1.5.12';
 import {removeTrait} from '../flow/events.js?v=1.5.12';
 export function tjAccrue(st,lv){ /* 球威風險 × 投法 × 角色標準化工作量；體力不參與。 */
   if((S.pos!=='P'&&S.pos!=='TW')||S.seasonFactor<=0||!st||!(pitG(st)>0))return;
   const L=LV[lv||S.lv];
-  /* 二刀流的倍數自成一組(1.45/1.25/1.10)。理由:workload 項是 IP÷該層級場次，
-     局數砍到七成會自動讓他的手臂比全職王牌更耐用——但現實相反(大谷開了兩次刀)。
-     拉高之後全力投與普通投的磨損率與單刀持平，只有養生球才真正買得到休息。
-     見 docs/twoway-design.md §5。 */
+  /* 二刀流的倍數自成一組(1.55/1.25/1.10，表在 season.js 的 TW_EFFORT)。
+     理由:workload 項是 IP÷該層級場次，局數砍到七成會自動讓他的手臂比全職王牌
+     更耐用——但現實相反(大谷開了兩次刀)。見 docs/twoway-design.md §5。
+     全力投原本是 1.45，實測手術時間點還是比單刀晚，因為局數少掉的量比倍數補回來的多；
+     拉到 1.55 才真的追平。數字只有一份，兩邊不會再各說各話。 */
   const effort=(S.pos==='TW'
-    ?{'全力投':1.45,'普通投':1.25,'養生球':1.10}
-    :{'全力投':1.30,'普通投':1.00,'養生球':0.80})[S.effort]||(S.pos==='TW'?1.25:1.0);
+    ?(TW_EFFORT[S.effort]||TW_EFFORT['普通投']).tj
+    :({'全力投':1.30,'普通投':1.00,'養生球':0.80})[S.effort]||1.0);
   /* 先發以該層級球季場數作標準局數；後援以約 45% 賽程、最高 60 場作標準登板。 */
   const roleTarget=isSP()?(L.g||1):Math.min(60,Math.max(1,Math.round((L.g||1)*0.45)));
   /* 後援用登板數:二刀流的 st.G 是打擊出賽，直接讀會把累積灌爆。 */
