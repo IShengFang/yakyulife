@@ -98,8 +98,8 @@ export function syncEra(st,lv){
    「投多少、打多少、磨多少」三個數字並排在同一張表上。 */
 export const TW_EFFORT={
   '全力投':{pit:0.85,bat:0.90,tj:1.55},
-  '普通投':{pit:0.70,bat:1.00,tj:1.25},
-  '養生球':{pit:0.50,bat:1.00,tj:1.10},
+  '普通投':{pit:0.70,bat:1.00,tj:1.35},
+  '養生球':{pit:0.50,bat:1.00,tj:1.20},
 };
 export const twEffort=()=>TW_EFFORT[S.effort]||TW_EFFORT['普通投'];
 /* 二刀流的單一品質值:兩側取高，弱側再按比例回饋(最多 +6)。與 ovr() 同一套哲學——
@@ -113,14 +113,27 @@ export function twoWayD(p,b){ return +(Math.max(p,b)+clamp(Math.min(p,b)*0.35,0,
    分開之後評價那條線完全不動(二刀流的名人堂率本來就是七條路線最高的，不能再加)。
 
    係數是掃出來的。把 TW 與 DH 對齊同一個 peakCore 帶再比生涯收入（只看有站上
-   日職一軍以上的），0.35 的結果是：
-     peakCore 55~62  TW÷DH 2.38　｜　62~68  1.41　｜　68~75  0.98
-   低段與中段本來就領先（一個邊緣的指定打擊幾乎沒有價值，邊緣的二刀流還能吃局數），
-   壞掉的是頂端——頂級二刀流跟頂級指定打擊領一樣多。現實裡大谷的合約是頂級純打者
-   的 1.75 倍。0.55／上限 12 之後：2.58 ／ 1.48 ／ 1.04，p90 從 18.1 億拉到 20.6 億。
-   還沒到 1.75，但頂端終於是往上的。 */
-export const TW_PAY_K=0.55, TW_PAY_CAP=12;
-export function twoWayPayD(p,b){ return +(Math.max(p,b)+clamp(Math.min(p,b)*TW_PAY_K,0,TW_PAY_CAP)).toFixed(2); }
+   日職一軍以上的），中位倍數：
+
+     係數     55~62    62~68    68~75
+     0.35      1.59     1.13     0.93   ← 原本，頂端是輸的
+     0.55      1.66     1.24     1.01
+     0.80      1.78     1.39     1.10
+     1.00      1.88     1.52     1.20
+
+   試過只推頂端而不動低段（讓係數隨弱側大小遞增），沒有用：頂端那一帶的弱側其實
+   不大（點數要分給投打兩邊，peakCore 70 的二刀流兩側各自都只有中段水準），
+   遞增段根本沒被觸發，斜率 0.030 與 0.055 量出來一模一樣。
+   能動頂端的只有整體係數，而它會等比例把三段一起抬。
+
+   所以取 1.00 ——「兩份工作就是相加」，這也是最不需要解釋的版本。
+   低段變甜（1.88 倍）是可以接受的：一個邊緣的指定打擊幾乎沒有價值，
+   邊緣的二刀流還能吃局數，而且那一段的絕對金額本來就很小（4.1 億對 2.2 億）。
+   上限 22 只有兩側都站上聯盟頂尖才會碰到。 */
+export const TW_PAY_K=1.00, TW_PAY_CAP=22;
+export function twoWayPayD(p,b){
+  return +(Math.max(p,b)+clamp(Math.min(p,b)*TW_PAY_K,0,TW_PAY_CAP)).toFixed(2);
+}
 export function simSeason(lv){
   if((S.pos==='P'||S.pos==='TW')&&!S.role)S.role=pitcherRole();
   const L=LV[lv], par=L.par, a=S.ab, f=S.seasonFactor;
