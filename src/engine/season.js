@@ -548,60 +548,89 @@ export function amateurSeason(){
   card('','年度大賽',lines.join('<br>')+`<div class="statline">獲得能力點 ${gain} 點，季末統一分配。能力越高，大賽收穫越多。</div>`);
   maybeIntl(()=>nextStep());
 }
+/* ── 狀態火燙／低潮：出賽機會 ＋ 內容，不再直接加減 counting stat ──
+
+   舊版是「st.SO += p×8、st.IP += p×4」。兩個問題：
+
+   ① 加成是**絕對值**，不隨工作量縮放。一個投 200 局的王牌加 8 個三振無感，
+      一個只投 30 局的二刀流加 8 個就是 +30%。二刀流被放大得最嚴重。
+   ② 憑空生出來的局數沒有對應的被安打與四死球。ERA 改成由零件反推之後
+      （v1.6.1），IP 是 h9／bb9／hr9 的分母——多灌 16 局進去，三個率值同時
+      被除小三成，ERA 直接崩到 1 點多。實測回報：能力 53/46/56（大聯盟 par 59，
+      三項全部低於聯盟平均）的二刀流投出 6 登板／46 局／ERA 1.76／63 三振，
+      每場 7.7 局、K/9 12.3——兩個都是不存在的數字。舊版看不出來，
+      因為那時候 ERA 是獨立擲的，跟被安打無關。
+
+   現在拆成兩件事，兩件都是**比例**：
+     · 出賽機會：火燙＝教練多用你，局數跟著自己的「每場局數」走，不會憑空出現。
+     · 內容：直接動 k9／h9／bb9／hr9 四個率值，再由 IP 反推 counting stat。
+   這樣不管 IP 多少，火燙的效果都是同一個幅度，而且 ERA 與 WHIP 永遠對得起來。
+
+   p 的分布（實測 14,829 個球季）：中位 1.0、p90 2.1、p99 3.0、最大 9.0。 */
+export function formPitch(st,lv,p){
+  const ip0=normalizeIP(st.IP); if(!(ip0>0)||!p)return;
+  const gK=Number.isFinite(st.GP)?'GP':'G';
+  const hK=Number.isFinite(st.pH)?'pH':'H', bbK=Number.isFinite(st.pBB)?'pBB':'BB';
+  const per9=v=>(v||0)/ip0*9;
+  let k9=per9(st.SO), h9=per9(st[hK]), bb9=per9(st[bbK]), hr9=per9(st.pHR);
+  const g0=Math.max(1,pitG(st)), ipg=ip0/g0;
+  /* ① 出賽機會。先發的上限照輪次(該層級場次 ÷ 5)，後援照 68 場與聯盟場次。 */
+  const L=LV[lv]||LV.CPBL1, sp=isSP();
+  const cap=sp?Math.max(1,Math.round((L.g||120)/5*1.12)):Math.min(68,L.g||120);
+  const g=Math.max(1,Math.min(cap,g0+Math.round(p*(sp?0.5:1.2))));
+  const ip=+(g*ipg).toFixed(1);
+  /* ② 內容。火燙＝球被打得比較差、三振變多；低潮反過來。 */
+  const f=clamp(p*0.030,-0.30,0.30);
+  k9*=1+f*0.90; h9*=1-f*0.55; bb9*=1-f*0.45; hr9*=1-f*1.20;
+  st[gK]=g; st.IP=ip;
+  st.SO=Math.max(0,Math.round(ip/9*k9));
+  st[hK]=Math.max(0,Math.round(ip/9*h9));
+  st[bbK]=Math.max(0,Math.round(ip/9*bb9));
+  if(Number.isFinite(st.pHR))st.pHR=Math.max(0,Math.round(ip/9*hr9));
+  syncEra(st,lv);
+  /* ③ 勝敗／救援跟著出賽數重算，並夾回物理上限。 */
+  if(sp){
+    const dec=Math.round(g*0.72), wp=clamp((st.W+st.L)>0?st.W/(st.W+st.L)+f*0.35:0.5+f*0.35,0.10,0.90);
+    st.W=Math.round(dec*wp); st.L=Math.max(0,dec-st.W);
+  }else{
+    const scale=g/g0;
+    st.SV=Math.round((st.SV||0)*scale*(1+f*0.5));
+    st.HLD=Math.round((st.HLD||0)*scale*(1+f*0.5));
+    st.SV=Math.min(st.SV,Math.floor(g*0.85));
+    st.HLD=Math.min(st.HLD,Math.max(0,g-st.SV));
+    const decCap=Math.max(0,g-st.SV-st.HLD);
+    if((st.W+st.L)>decCap){ st.W=Math.min(st.W,decCap); st.L=Math.max(0,decCap-st.W); }
+  }
+}
+/* 打擊側同理。舊版新增的打數是用固定的 .550 打擊率再加 p×1.5 支安打填的
+   ——實測那批新打數的打擊率會到 .8 以上，等於憑空塞進一段不可能的成績。
+   改成：新打數用他自己的打擊率，火燙再統一給一個比例加成。 */
+export function formBat(st,lv,p){
+  if(!p||!(st.AB>0))return;
+  const L=LV[lv]||LV.CPBL1, f=clamp(p*0.030,-0.30,0.30);
+  const avg0=st.H/st.AB, hrR=st.HR/st.AB, rbiPerH=st.H>0?st.RBI/st.H:0.5;
+  const addG=Math.round(p*1.5);
+  const g=Math.max(1,Math.min(L.g||120,st.G+addG));
+  const scale=st.G>0?g/st.G:1;
+  st.G=g; st.PA=Math.round(st.PA*scale); st.AB=Math.round(st.AB*scale);
+  st.BB=Math.round((st.BB||0)*scale);
+  const avg=clamp(avg0*(1+f*0.55),0.100,0.480), hr=Math.max(0,hrR*(1+f*1.10));
+  st.H=Math.min(st.AB,Math.round(st.AB*avg));
+  st.HR=Math.min(st.H,Math.round(st.AB*hr));
+  st.RBI=Math.max(0,Math.round(st.H*rbiPerH*(1+f*0.6)));
+  st.SB=Math.round((st.SB||0)*scale);
+  st.avg=st.AB?st.H/st.AB:0;
+}
 export function proSeason(){
  const seasonLv=S.lv,st=simSeason(seasonLv); S.lastSt=st; S.lastD=st.d; S.lastLv=seasonLv;
   if(S.pendStat!==0&&S.seasonFactor>0){
     /* 【修正】狀態火燙的加成，必須依照該季實際出賽的比例（seasonFactor）進行打折 */
     const p = S.pendStat * S.seasonFactor;
     /* 二刀流兩側都要吃到火燙／低潮。原本寫成 if(投手)…else if(打者)…，
-       二刀流會落進打者那一支，投球側整季的加成與折損通通不見。
-       登板數欄位同樣要走 pitG()/gK——直接讀 st.G 會把打擊出賽當成登板數。 */
-    const TWs=S.pos==='TW', gK=TWs?'GP':'G';
-    const pitSide=S.pos==='P'||TWs, batSide=S.pos!=='P';
-    if(p>0&&pitSide){
-      /* 狀態火燙=教練重用:後援先加出賽(不超過場次上限),再加內容;物理約束重夾 */
-      if(!isSP()){ const reliefCap=Math.min(68,LV[seasonLv].g); const addG=Math.min(Math.max(0,reliefCap-pitG(st)),Math.round(p*1.2)); st[gK]=pitG(st)+addG; st.IP=+(st.IP+addG*1.05).toFixed(1); }
-      st.SO+=Math.round(p*8); st.IP=+(st.IP+p*4).toFixed(1);
-      if(isSP())st.W+=Math.round(p*0.4); else st.SV+=Math.round(p*0.6);
-      /* 火燙＝球被打得比較差，所以動的是被安打與被全壘打，ERA 由零件重算。 */
-      { const hk=Number.isFinite(st.pH)?'pH':'H';
-        st[hk]=Math.max(0,Math.round((st[hk]||0)*(1-p*0.012)));
-        if(Number.isFinite(st.pHR))st.pHR=Math.max(0,Math.round(st.pHR*(1-p*0.035)));
-        syncEra(st,seasonLv); }
-      if(!isSP()){ /* 救援/勝敗不可超過出賽數(物理約束) */
-        const gp=pitG(st);
-        st.SV=Math.min(st.SV||0,Math.floor(gp*0.85));
-        st.HLD=Math.min(st.HLD||0,Math.max(0,gp-st.SV));
-        const decCap=Math.max(0,gp-st.SV-st.HLD);
-        if((st.W+st.L)>decCap){ st.W=Math.min(st.W,decCap); st.L=Math.max(0,decCap-st.W); }
-      } }
-    if(p>0&&batSide){ const Lg=LV[S.lv];
-      /* 狀態火燙=教練重用:先轉為上場機會(G/PA 連動,不超過聯盟場次),打擊內容同步升溫 */
-      const addG=Math.min(Math.max(0,(Lg.g||120)-st.G), Math.round(p*1.5));
-      const addPA=Math.round(addG*4.25), addAB=Math.round(addPA*0.9);
-      st.G+=addG; st.PA+=addPA; st.AB+=addAB;
-      let addH=Math.round(addAB*0.55)+Math.round(p*1.5); /* 新打席打得火燙+原打席手感提升 */
-      addH=Math.max(0,Math.min(addH, st.AB-st.H));        /* 安打不可超過打數 */
-      const addHR=Math.min(addH, Math.round(p*1.2));
-      st.H+=addH; st.HR+=addHR; st.RBI+=Math.round(addHR*2.1+(addH-addHR)*0.3);
-      st.avg=st.AB?st.H/st.AB:0; }
-    if(p<0&&pitSide){
-      const q=Math.abs(p);
-      st.SO=Math.max(0,st.SO-Math.round(q*6));
-      st.W=Math.max(0,st.W-Math.round(q*.3));
-      if(!isSP())st.SV=Math.max(0,(st.SV||0)-Math.round(q*.4));
-      { const hk=Number.isFinite(st.pH)?'pH':'H';
-        st[hk]=Math.max(0,Math.round((st[hk]||0)*(1+q*0.012)));
-        if(Number.isFinite(st.pHR))st.pHR=Math.round(st.pHR*(1+q*0.035));
-        syncEra(st,seasonLv); }
-    }
-    if(p<0&&batSide){
-      const q=Math.abs(p), loseH=Math.min(st.H,Math.round(q*2));
-      st.H-=loseH;
-      st.HR=Math.min(st.H,Math.max(0,st.HR-Math.round(q*.5)));
-      st.RBI=Math.max(0,st.RBI-Math.round(q*1.2));
-      st.avg=st.AB?st.H/st.AB:0;
-    }
+       二刀流會落進打者那一支，投球側整季的加成與折損通通不見。 */
+    const pitSide=S.pos==='P'||S.pos==='TW', batSide=S.pos!=='P';
+    if(pitSide)formPitch(st,seasonLv,p);
+    if(batSide)formBat(st,seasonLv,p);
   }
   S.pendStat=0;
   /* 投法對成績的加成/折損 */
