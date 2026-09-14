@@ -91,7 +91,10 @@ import {startYear} from './flow/phases.js?v=2.0.2';
   document.addEventListener('keydown',ev=>{ if(ev.key==='Escape'){ modalClose(); allocFullClose(); } });
 })();
 let selPos='P';
-const DEFAULT_PLAYERS={P:{name:'有有子',jersey:11},IF:{name:'抹茶多',jersey:13}};
+/* 姓名與背號都留空時的預設球員。TW 有自己的一組——原本沒有，
+   二刀流會掉到下面那組隨機的野手名字（藥帝士／黃鎖頭），跟身分完全對不上。
+   背號 17 是二刀流的那個號碼。 */
+const DEFAULT_PLAYERS={P:{name:'有有子',jersey:11},IF:{name:'抹茶多',jersey:13},TW:{name:'大骨湯',jersey:17}};
 const DEFAULT_PLAYER_PAIRS=[
   DEFAULT_PLAYERS.P,DEFAULT_PLAYERS.IF,{name:'藥帝士',jersey:23},{name:'黃鎖頭',jersey:22}
 ];
