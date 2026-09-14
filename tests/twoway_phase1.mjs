@@ -17,10 +17,10 @@ try{
 
   /* ── ① 模組層：資料形狀、成本曲線、ovr、事件卡資格 ── */
   const unit=await page.evaluate(async()=>{
-    const state=await import('./src/core/state.js?v=2.0.3');
-    const ability=await import('./src/engine/ability.js?v=2.0.3');
-    const events=await import('./src/flow/events.js?v=2.0.3');
-    const {POS_AB,POSN}=await import('./src/data/abilities.js?v=2.0.3');
+    const state=await import('./src/core/state.js?v=2.0.4');
+    const ability=await import('./src/engine/ability.js?v=2.0.4');
+    const events=await import('./src/flow/events.js?v=2.0.4');
+    const {POS_AB,POSN}=await import('./src/data/abilities.js?v=2.0.4');
 
     /* 成本曲線由「依守位」改成「依能力鍵」，對投手與野手必須是恆等變換。 */
     const oldCost=(pos,k,cur,pk)=>{ const isP=pos==='P';
@@ -87,14 +87,26 @@ try{
   const page2=await browser.newPage();
   page2.on('pageerror',error=>errors.push(error.message));
   await page2.goto(`${url}?seed=twoway-walk`,{waitUntil:'domcontentloaded'});
+  /* v2.0.4 起首頁有一張看得見的二刀流卡；七下捷徑保留，跟卡片切同一個狀態。
+     守位列不再被換成單一按鈕，改成整排鎖住變灰——讓玩家看得見自己放棄了什麼。 */
   for(let i=0;i<7;i++){ await page2.click('#logo-tap'); }
-  const segLabels=await page2.$$eval('#seg-pos button',es=>es.map(e=>e.textContent.trim()));
-  assert.deepEqual(segLabels,['二刀流'],'七下之後守位選單應該只剩二刀流');
+  const entry=await page2.evaluate(()=>({
+    pressed:document.getElementById('tw-card').getAttribute('aria-pressed'),
+    locked:document.getElementById('seg-pos').classList.contains('tw-locked'),
+    allDisabled:[...document.querySelectorAll('#seg-pos button')].every(x=>x.disabled),
+    noneOn:[...document.querySelectorAll('#seg-pos button')].every(x=>!x.classList.contains('on')),
+    labels:[...document.querySelectorAll('#seg-pos button')].map(e=>e.textContent.trim()),
+  }));
+  assert.equal(entry.pressed,'true','七下之後二刀流卡應該是選取狀態');
+  assert.equal(entry.locked,true,'七下之後守位列應該鎖住');
+  assert.equal(entry.allDisabled,true,'七下之後守位鈕應該全部 disabled');
+  assert.equal(entry.noneOn,true,'二刀流不選守位，守位鈕不該還有一顆是選中的');
+  assert.deepEqual(entry.labels,['投手','捕手','內野手','外野手'],'守位鈕本身不該被換掉，只是鎖住');
   await page2.click('#btn-start');
 
   const walk=await page2.evaluate(async()=>{
-    const state=await import('./src/core/state.js?v=2.0.3');
-    const {TW_SIX_GUARANTEED}=await import('./src/flow/phases.js?v=2.0.3');
+    const state=await import('./src/core/state.js?v=2.0.4');
+    const {TW_SIX_GUARANTEED}=await import('./src/flow/phases.js?v=2.0.4');
     const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     const vis=x=>x&&x.offsetParent!==null&&!x.disabled;
     const S=state.S, years=[]; let seen=null, dice=[];

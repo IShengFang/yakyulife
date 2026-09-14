@@ -1,8 +1,8 @@
-import {S} from '../core/state.js?v=2.0.3';
-import {R, pick, chance, clamp} from '../core/rng.js?v=2.0.3';
-import {ABL, POS_AB} from '../data/abilities.js?v=2.0.3';
-import {card, choose, board} from '../ui/dom.js?v=2.0.3';
-import {addAb, addAbStat, statBonusTxt, abGainTxt} from '../engine/ability.js?v=2.0.3';
+import {S} from '../core/state.js?v=2.0.4';
+import {R, pick, chance, clamp} from '../core/rng.js?v=2.0.4';
+import {ABL, POS_AB} from '../data/abilities.js?v=2.0.4';
+import {card, choose, board} from '../ui/dom.js?v=2.0.4';
+import {addAb, addAbStat, statBonusTxt, abGainTxt} from '../engine/ability.js?v=2.0.4';
 /* 出廠預設為全虛構人名;玩家可透過隱藏編輯器自訂名單(僅存於玩家本機) */
 export let CHEER=['林曉晴','陳若彤','張沛慈','王詠恩','許昀熙','蘇采蓁','周依潔','郭芷萱'];
 export const CHEER_DEFAULT=CHEER.slice();

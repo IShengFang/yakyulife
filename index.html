@@ -35,7 +35,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/bold/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
-<link rel="stylesheet" href="css/style.css?v=2.0.3-ui-complete">
+<link rel="stylesheet" href="css/style.css?v=2.0.4-ui-complete">
 </head>
 <body>
 <div id="start">
@@ -55,11 +55,19 @@
           <div class="jersey-input"><span aria-hidden="true">#</span><input id="in-number" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="背號" aria-label="背號" autocomplete="off"></div>
         </div>
       </div>
-      <div class="field"><label>守位</label>
+      <div class="field"><label id="lbl-pos">守位</label>
         <div class="seg" id="seg-pos">
           <button data-v="P" class="on">投手</button><button data-v="C">捕手</button>
           <button data-v="IF">內野手</button><button data-v="OF">外野手</button>
         </div>
+        <!-- 二刀流不是「第五個守位」，是一個有代價的模式，而且不能跟守位並存，
+             所以版型上跟守位列分開。標題連點七下的舊捷徑仍然有效，跟這張卡切同一個狀態。 -->
+        <button type="button" id="tw-card" class="tw-card" aria-pressed="false">
+          <span class="tw-body">
+            <span class="tw-head"><b>二刀流</b><span class="tw-badge">特殊路線</span></span>
+            <span class="tw-desc">投打兼修。高中三年覺醒天才、訓練骰保底五顆——但任一側跟不上層級水準就會被強制收斂成單刀，投在另一側的點數不退還，天才也會一併失去。</span>
+          </span>
+        </button>
       </div>
       <div class="field seedline"><label for="seed-show">世界種子</label>
         <div class="seed-input-row">
@@ -96,7 +104,7 @@
       </details>
       <div id="community"><a href="https://discord.gg/UnDYxFtz4U" target="_blank" rel="noopener noreferrer"><i class="ph-fill ph-chat-circle-dots" aria-hidden="true"></i>加入 Discord</a></div>
     </div>
-    <div class="start-meta">Produced by <a href="https://www.threads.com/@mr.themost" target="_blank" rel="noopener">最先生 Mr.TheMost</a><span id="ver-badge">v2.0.3</span></div>
+    <div class="start-meta">Produced by <a href="https://www.threads.com/@mr.themost" target="_blank" rel="noopener">最先生 Mr.TheMost</a><span id="ver-badge">v2.0.4</span></div>
   </footer>
 </div>
 <div id="app">
@@ -150,6 +158,6 @@
 <div id="alloc-full"><div id="af-inner"><div class="af-head"><span class="af-title" id="af-title"></span><button class="btn" id="af-close">收起</button></div><div id="af-body"></div></div></div>
 <!-- GitHub Pages sits behind a long-lived CDN cache. The entry point and every
      relative import carry this release token so browsers cannot mix versions. -->
-<script type="module" src="src/main.js?v=2.0.3-ui-complete"></script>
+<script type="module" src="src/main.js?v=2.0.4-ui-complete"></script>
 </body>
 </html>

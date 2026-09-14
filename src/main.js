@@ -1,13 +1,13 @@
-import {SEED, setSeed, seedInit} from './core/rng.js?v=2.0.3';
-import {S, setS, newState} from './core/state.js?v=2.0.3';
-import {APP_VER} from './config.js?v=2.0.3';
-import {POSN} from './data/abilities.js?v=2.0.3';
-import {LV} from './data/teams.js?v=2.0.3';
-import {$, card, modalClose, actToggleSync} from './ui/dom.js?v=2.0.3';
-import {THEME_KEY, BIG_KEY, applyTheme, applyMobileUI, applyBigText, updDispSum} from './ui/prefs.js?v=2.0.3';
-import {allocFullClose} from './ui/alloc.js?v=2.0.3';
-import {TL, resetTL, renderTimeline, tlScrollTo} from './ui/timeline.js?v=2.0.3';
-import {startYear} from './flow/phases.js?v=2.0.3';
+import {SEED, setSeed, seedInit} from './core/rng.js?v=2.0.4';
+import {S, setS, newState} from './core/state.js?v=2.0.4';
+import {APP_VER} from './config.js?v=2.0.4';
+import {POSN} from './data/abilities.js?v=2.0.4';
+import {LV} from './data/teams.js?v=2.0.4';
+import {$, card, modalClose, actToggleSync} from './ui/dom.js?v=2.0.4';
+import {THEME_KEY, BIG_KEY, applyTheme, applyMobileUI, applyBigText, updDispSum} from './ui/prefs.js?v=2.0.4';
+import {allocFullClose} from './ui/alloc.js?v=2.0.4';
+import {TL, resetTL, renderTimeline, tlScrollTo} from './ui/timeline.js?v=2.0.4';
+import {startYear} from './flow/phases.js?v=2.0.4';
 
 /* ================= 開場設定 ================= */
 /* iOS Safari zoom guards. Pinch: Safari ignores maximum-scale/user-scalable, so the
@@ -118,38 +118,46 @@ function bindPosSeg(){
   });
 }
 bindPosSeg();
-/* 二刀流入口:標題連點 7 下開啟，再連點 7 下關掉(也可以直接重整——刻意不寫 localStorage，
-   見 docs/twoway-design.md §6)。開啟時守位選單只剩「二刀流」，不能改選其他守位:
-   七下是一條給二刀流的捷徑，不是拿來刷天才給純投手／純野手用的後門。 */
+/* ── 二刀流入口 ──
+   v2.0.4 起做成首頁上看得見的一張卡（#tw-card），不再只有彩蛋。
+   刻意不做成守位列的第五顆按鈕：二刀流不能跟守位並存，排在同一列會讓它讀起來像
+   「第五個守位」，390px 下五欄也只剩 66px。整寬的卡讀得出它是另一個層級的選擇。
+
+   打開時守位列不隱藏、只鎖住變灰——讓玩家看得見自己放棄了什麼；
+   守位本身保留原本選的那一個，關掉就直接回去，不用重猜。
+
+   標題連點七下的舊捷徑留著，跟卡片切同一個狀態（setTwoWay），知道的人照樣能用。
+   刻意不寫 localStorage，重整就回到單刀，見 docs/twoway-design.md §6。 */
 (()=>{
-  const logo=$('logo-tap'), seg=$('seg-pos'); if(!logo||!seg)return;
-  const segHTML=seg.innerHTML;                 /* 關掉時原樣還原四顆守位鈕 */
-  let taps=0,last=0,prevPos=selPos;
-  /* 不改 cursor——這是彩蛋，不該讓標題看起來可以點。只擋掉連點造成的文字反白。 */
-  logo.style.userSelect='none'; logo.style.webkitUserSelect='none';
-  const hintOff=()=>{ const h=document.getElementById('tw-hint'); if(h)h.remove(); };
-  const hintOn=()=>{
-    const field=seg.closest('.field'); if(!field||document.getElementById('tw-hint'))return;
-    const hint=document.createElement('p');
-    hint.id='tw-hint'; hint.className='seed-hint';
-    hint.innerHTML='投打兼修。高中三年會覺醒天才，訓練骰保底五顆——但任一側跟不上層級水準就會被強制收斂成單刀，'+
-      '投在另一側的點數不退還，天才也會一併失去。<b>再連點七下標題即可取消。</b>';
-    field.appendChild(hint);
-  };
-  logo.addEventListener('click',()=>{
-    const now=Date.now();
-    taps=(now-last>1500)?1:taps+1; last=now;   /* 中斷超過 1.5 秒就重數，避免誤觸累積 */
-    if(taps<7)return;
-    taps=0;
-    if(selPos==='TW'){                          /* 再七下:還原成原本選的守位 */
-      selPos=prevPos; seg.innerHTML=segHTML; bindPosSeg();
-      seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.v===selPos));
-      hintOff(); return;
-    }
-    prevPos=selPos; selPos='TW';
-    seg.innerHTML='<button data-v="TW" class="on">二刀流</button>';
-    bindPosSeg(); hintOn();
-  });
+  const logo=$('logo-tap'), seg=$('seg-pos'), cardBtn=$('tw-card'), lbl=$('lbl-pos');
+  if(!seg||!cardBtn)return;
+  let prevPos=selPos;
+  const POS_LABEL='守位', TW_LABEL='守位（二刀流不選守位）';
+  function setTwoWay(on){
+    if(on===(selPos==='TW'))return;
+    if(on){ prevPos=selPos; selPos='TW'; }
+    else { selPos=prevPos||'P'; }
+    seg.classList.toggle('tw-locked',on);
+    seg.querySelectorAll('button').forEach(x=>{
+      x.disabled=on;
+      x.classList.toggle('on',!on&&x.dataset.v===selPos);
+    });
+    cardBtn.setAttribute('aria-pressed',String(on));
+    if(lbl)lbl.textContent=on?TW_LABEL:POS_LABEL;
+  }
+  cardBtn.addEventListener('click',()=>setTwoWay(selPos!=='TW'));
+  if(logo){
+    let taps=0,last=0;
+    /* 不改 cursor——這是彩蛋，不該讓標題看起來可以點。只擋掉連點造成的文字反白。 */
+    logo.style.userSelect='none'; logo.style.webkitUserSelect='none';
+    logo.addEventListener('click',()=>{
+      const now=Date.now();
+      taps=(now-last>1500)?1:taps+1; last=now; /* 中斷超過 1.5 秒就重數，避免誤觸累積 */
+      if(taps<7)return;
+      taps=0; setTwoWay(selPos!=='TW');
+      cardBtn.scrollIntoView({block:'nearest',behavior:'smooth'});
+    });
+  }
 })();
 $('btn-start').onclick=()=>{
   const sv=$('seed-show').value.trim(); if(sv)setSeed(sv); /* 玩家可直接輸入流水碼 */
