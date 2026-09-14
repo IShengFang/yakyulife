@@ -1,13 +1,13 @@
-import {SEED, setSeed, seedInit} from './core/rng.js?v=2.0.4';
-import {S, setS, newState} from './core/state.js?v=2.0.4';
-import {APP_VER} from './config.js?v=2.0.4';
-import {POSN} from './data/abilities.js?v=2.0.4';
-import {LV} from './data/teams.js?v=2.0.4';
-import {$, card, modalClose, actToggleSync} from './ui/dom.js?v=2.0.4';
-import {THEME_KEY, BIG_KEY, applyTheme, applyMobileUI, applyBigText, updDispSum} from './ui/prefs.js?v=2.0.4';
-import {allocFullClose} from './ui/alloc.js?v=2.0.4';
-import {TL, resetTL, renderTimeline, tlScrollTo} from './ui/timeline.js?v=2.0.4';
-import {startYear} from './flow/phases.js?v=2.0.4';
+import {SEED, setSeed, seedInit} from './core/rng.js?v=2.0.5';
+import {S, setS, newState} from './core/state.js?v=2.0.5';
+import {APP_VER} from './config.js?v=2.0.5';
+import {POSN} from './data/abilities.js?v=2.0.5';
+import {LV} from './data/teams.js?v=2.0.5';
+import {$, card, modalClose, actToggleSync} from './ui/dom.js?v=2.0.5';
+import {THEME_KEY, BIG_KEY, applyTheme, applyMobileUI, applyBigText, updDispSum} from './ui/prefs.js?v=2.0.5';
+import {allocFullClose} from './ui/alloc.js?v=2.0.5';
+import {TL, resetTL, renderTimeline, tlScrollTo} from './ui/timeline.js?v=2.0.5';
+import {startYear} from './flow/phases.js?v=2.0.5';
 
 /* ================= 開場設定 ================= */
 /* iOS Safari zoom guards. Pinch: Safari ignores maximum-scale/user-scalable, so the
@@ -119,33 +119,18 @@ function bindPosSeg(){
 }
 bindPosSeg();
 /* ── 二刀流入口 ──
-   v2.0.4 起做成首頁上看得見的一張卡（#tw-card），不再只有彩蛋。
-   刻意不做成守位列的第五顆按鈕：二刀流不能跟守位並存，排在同一列會讓它讀起來像
-   「第五個守位」，390px 下五欄也只剩 66px。整寬的卡讀得出它是另一個層級的選擇。
+   v2.0.5 起就是守位列的第五顆按鈕：它跟其他四個互斥、行為一樣，沒有理由做成
+   另一種控制項。差別只有底部一條金線，以及選中時多出的一行說明——
+   平常首頁保持安靜，不用一段文字去解釋一個還沒被選的選項。
 
-   打開時守位列不隱藏、只鎖住變灰——讓玩家看得見自己放棄了什麼；
-   守位本身保留原本選的那一個，關掉就直接回去，不用重猜。
-
-   標題連點七下的舊捷徑留著，跟卡片切同一個狀態（setTwoWay），知道的人照樣能用。
+   標題連點七下的舊捷徑留著：它現在就是「幫你按下第五顆」，行為完全一致。
    刻意不寫 localStorage，重整就回到單刀，見 docs/twoway-design.md §6。 */
 (()=>{
-  const logo=$('logo-tap'), seg=$('seg-pos'), cardBtn=$('tw-card'), lbl=$('lbl-pos');
-  if(!seg||!cardBtn)return;
-  let prevPos=selPos;
-  const POS_LABEL='守位', TW_LABEL='守位（二刀流不選守位）';
-  function setTwoWay(on){
-    if(on===(selPos==='TW'))return;
-    if(on){ prevPos=selPos; selPos='TW'; }
-    else { selPos=prevPos||'P'; }
-    seg.classList.toggle('tw-locked',on);
-    seg.querySelectorAll('button').forEach(x=>{
-      x.disabled=on;
-      x.classList.toggle('on',!on&&x.dataset.v===selPos);
-    });
-    cardBtn.setAttribute('aria-pressed',String(on));
-    if(lbl)lbl.textContent=on?TW_LABEL:POS_LABEL;
-  }
-  cardBtn.addEventListener('click',()=>setTwoWay(selPos!=='TW'));
+  const logo=$('logo-tap'), seg=$('seg-pos'), hint=$('tw-hint');
+  if(!seg)return;
+  const sync=()=>{ if(hint)hint.hidden=selPos!=='TW'; };
+  sync();
+  seg.addEventListener('click',sync);       /* bindPosSeg 先改 selPos，這裡再跟著顯示 */
   if(logo){
     let taps=0,last=0;
     /* 不改 cursor——這是彩蛋，不該讓標題看起來可以點。只擋掉連點造成的文字反白。 */
@@ -154,8 +139,9 @@ bindPosSeg();
       const now=Date.now();
       taps=(now-last>1500)?1:taps+1; last=now; /* 中斷超過 1.5 秒就重數，避免誤觸累積 */
       if(taps<7)return;
-      taps=0; setTwoWay(selPos!=='TW');
-      cardBtn.scrollIntoView({block:'nearest',behavior:'smooth'});
+      taps=0;
+      const tw=seg.querySelector('button[data-v="TW"]'); if(tw)tw.click();
+      seg.scrollIntoView({block:'nearest',behavior:'smooth'});
     });
   }
 })();
