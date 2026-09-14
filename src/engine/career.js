@@ -1,10 +1,11 @@
-import {S} from '../core/state.js?v=2.0.2';
-import {clamp} from '../core/rng.js?v=2.0.2';
-import {DPN, POSN, POS_ADJ_RUNS, POS_TIER_K, POS_TIER_STR} from '../data/abilities.js?v=2.0.2';
-import {LG_N, envOf, envWhip, envLeagueOps} from '../data/teams.js?v=2.0.2';
-import {TIER_TH, LEAGUE_K, MILESTONE_DEF, HOF_TH_K} from '../data/economy.js?v=2.0.2';
-import {fmtIP, slgOf, roleName3, baseballERA, baseballWHIP, pitG, pitBB} from './season.js?v=2.0.2';
-import {isCareerScoringAward} from './award-rules.js?v=2.0.2';
+import {S} from '../core/state.js?v=2.0.3';
+import {clamp} from '../core/rng.js?v=2.0.3';
+import {DPN, POSN, POS_ADJ_RUNS, POS_TIER_K, POS_TIER_STR} from '../data/abilities.js?v=2.0.3';
+import {LG_N, envOf, envWhip, envLeagueOps} from '../data/teams.js?v=2.0.3';
+import {TIER_TH, LEAGUE_K, MILESTONE_DEF, HOF_TH_K} from '../data/economy.js?v=2.0.3';
+import {fmtIP, slgOf, roleName3, baseballERA, baseballWHIP, pitG, pitBB} from './season.js?v=2.0.3';
+import {isCareerScoringAward, HONOR_GROUP_NAMES, honorSide, splitBySide} from './award-rules.js?v=2.0.3';
+export {HONOR_GROUP_NAMES, honorSide};
 /* ================= 生涯終章 ================= */
 const BUCKET_G={CPBL:120,NPB:143,MLB:162};
 /* 守位分：守位難度(POS_ADJ_RUNS 以「每 162 場」計)換算成該聯盟的實際球季長度。
@@ -340,21 +341,10 @@ export function honorRank(awd){
      · 通用：其餘全部——年度MVP、二天一流（投打雙三冠，不屬於任何一邊）、
              總冠軍與日本一、明星賽、國際賽的名次與賽會MVP、學生時代的大賽冠軍
    金手套與守備聖經放進打擊那一組，是因為它們是「野手」的獎；投手金手套本遊戲沒有。 */
-export const HONOR_GROUP_NAMES={all:'通用獎項',pit:'投手獎項',bat:'打擊獎項'};
-export function honorSide(awd){
-  const a=String(awd||'');
-  if(/二天一流|年度MVP/.test(a))return 'all';        /* 二天一流是兩邊一起拿的，不歸給任何一邊 */
-  if(/最佳投手|賽揚|勝投王|防禦率王|三振王|救援王|中繼王|投手三冠王/.test(a))return 'pit';
-  if(/最佳打者|打擊王|全壘打王|打點王|上壘王|盜壘王|打擊三冠王|金手套|守備聖經/.test(a))return 'bat';
-  return 'all';
-}
-/* honorGroups() 的結果依投打分成三段，順序固定 通用 → 投手 → 打擊。
-   空的那一段不回傳，所以純投手看到的還是兩段（通用＋投手），跟以前一樣乾淨。 */
+/* 分組規則本體在 award-rules.js（季末的年度獎項卡也要用同一套）。 */
 export function honorSections(groups){
-  const gs=groups||honorGroups();
-  return ['all','pit','bat']
-    .map(k=>({key:k,name:HONOR_GROUP_NAMES[k],groups:gs.filter(g=>honorSide(g.awd)===k)}))
-    .filter(sec=>sec.groups.length);
+  return splitBySide(groups||honorGroups(),g=>g.awd)
+    .map(sec=>({key:sec.key,name:sec.name,groups:sec.items}));
 }
 export function honorGroups(){
   const map=new Map();

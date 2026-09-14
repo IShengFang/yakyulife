@@ -1,13 +1,13 @@
-import {S} from '../core/state.js?v=2.0.2';
-import {chance, clamp} from '../core/rng.js?v=2.0.2';
-import {DPN, GLOVE_TH, GLOVE_K} from '../data/abilities.js?v=2.0.2';
-import {LV} from '../data/teams.js?v=2.0.2';
-import {AWARD_TH, starTh} from '../data/thresholds.js?v=2.0.2';
-import {card} from '../ui/dom.js?v=2.0.2';
-import {tlNote} from '../ui/timeline.js?v=2.0.2';
-import {isSP, slgOf, baseballERA, pitG} from './season.js?v=2.0.2';
-import {isCareerScoringAward} from './award-rules.js?v=2.0.2';
-import {traitCard, removeTrait} from '../flow/events.js?v=2.0.2';
+import {S} from '../core/state.js?v=2.0.3';
+import {chance, clamp} from '../core/rng.js?v=2.0.3';
+import {DPN, GLOVE_TH, GLOVE_K} from '../data/abilities.js?v=2.0.3';
+import {LV} from '../data/teams.js?v=2.0.3';
+import {AWARD_TH, starTh} from '../data/thresholds.js?v=2.0.3';
+import {card} from '../ui/dom.js?v=2.0.3';
+import {tlNote} from '../ui/timeline.js?v=2.0.3';
+import {isSP, slgOf, baseballERA, pitG} from './season.js?v=2.0.3';
+import {isCareerScoringAward, splitBySide} from './award-rules.js?v=2.0.3';
+import {traitCard, removeTrait} from '../flow/events.js?v=2.0.3';
 /* 獎項機率同時有硬下限與必得上限；數值越低越好的獎項（ERA）用 lower=true。 */
 export function awardP(value,hardLow,autoWin,base=25,lower=false){
   const ineligible=lower?value>hardLow:value<hardLow;
@@ -261,8 +261,13 @@ export function awards(bucket,st){
      再要求兩側同時達標等於把 MVP 從二刀流手上拿掉。 */
   let mvpQual=S.pos==='TW'?(pitchMvpQual()||batMvpQual())
             :S.pos==='P'?pitchMvpQual():batMvpQual();
-  if(pitcherTripleCrown||hitterTripleCrown){
-    /* 投手/打擊三冠王：必得年度MVP，不再走機率判定。 */
+  /* 同一年拿下年度最佳投手＋年度最佳打者，等於聯盟同時認定你是最強的投手與最強的打者，
+     那已經沒有比他更有資格拿 MVP 的人了。實務上只有二刀流碰得到：單刀球員不可能
+     同時滿足規定投球局數與規定打席。門檻比「二天一流」（投打雙三冠、一季六個王）低，
+     因為三冠裡拿到兩項就會保底該側的年度最佳，所以這條是兩邊各兩項即可。 */
+  const bothBest=h.includes(`${y} ${aceName}`)&&h.includes(`${y} ${bestBatterName}`);
+  if(pitcherTripleCrown||hitterTripleCrown||bothBest){
+    /* 投手/打擊三冠王、或投打雙料年度最佳：必得年度MVP，不再走機率判定。 */
     h.push(`${y} ${lgN}年度MVP`);
   }else if(mvpQual&&S.seasonFactor>=0.9){
     if(isReliever){
@@ -292,7 +297,14 @@ export function awards(bucket,st){
 
   /* 6. 後續獲獎觸發特質 */
   const added=h.filter(x=>x.startsWith(String(y)));
-  if(added.length){ card('gold','年度獎項',added.map(x=>x.slice(5)).join('｜'));
+  if(added.length){
+    /* 年度獎項卡也依投打分段。同一張卡裡投手獎跟打擊獎串成一長條讀不出來誰是誰，
+       二刀流尤其明顯。只有一段時不印小標，單刀球員的卡維持原樣。
+       分組規則與「目前成就」「結算卡」共用 award-rules.js 的 honorSide()。 */
+    const secs=splitBySide(added.map(x=>x.slice(5)));
+    card('gold','年度獎項', secs.length===1
+      ? secs[0].items.join('｜')
+      : secs.map(sec=>`<b class="hl">${sec.name}</b><br>${sec.items.join('｜')}`).join('<br><br>'));
     const topAw=added.find(x=>/年度MVP/.test(x))||added.find(x=>/最佳投手|最佳打者|王/.test(x))||added.find(x=>/新人王/.test(x))||added[0];
     tlNote(3,topAw.slice(5));
     if(S.traits.yips){ removeTrait('yips','失憶症'); card('good','走出陰影','站上大舞台拿下獎項的那一刻，腦海裡的雜音消失了——<b class="hl">失憶症痊癒</b>。'); }
