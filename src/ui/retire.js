@@ -10,7 +10,7 @@ import {traitNames, traitTagStyle, traitColorRank} from './traits.js?v=1.5.12';
 import {roleN, fmtIP, slgOf, baseballERA, baseballWHIP, pitG, pitBB} from '../engine/season.js?v=1.5.12';
 import {fmtMoney} from '../engine/contract.js?v=1.5.12';
 import {isChampionshipYear, isProChampionshipYear} from '../engine/championship.js?v=1.5.12';
-import {capTeam, careerMilestones, honorGroups, posLegendPhrase, primaryPos, statTable, tierOf, yearRanges, honorText,
+import {capTeam, careerMilestones, honorGroups, honorSections, posLegendPhrase, primaryPos, statTable, tierOf, yearRanges, honorText,
   twoWayView, twHasPit, twHasBat, statTables} from '../engine/career.js?v=1.5.12';
 import {shareImageSheet} from './share-image.js?v=1.5.12';
 /* ================= 結算圖資料建構 =================
@@ -1027,9 +1027,19 @@ export function endGame(reason){
   card('','生涯累積數據',(tables||'<p>（無職業層級出賽紀錄）</p>')+intlTable);
   if(evals.length)card('gold','生涯評價',evals.join('<br>'));
   /* 結算排序：名人堂 → 通算／各聯盟里程碑 → 國家隊 → MLB → NPB → CPBL → 業餘。 */
-  const settlementItems=careerMilestones().concat(honorGroups().map(honorText));
-  const honorsHTML=settlementItems.length?settlementItems.map(x=>'· '+x).join('<br>'):'（生涯未獲得任何獎項或里程碑）';
-  card(settlementItems.length?'gold':'','獎項、大賽與里程碑',honorsHTML);
+  /* 獎項依投打分成三段（通用／投手／打擊），里程碑照舊放最前面不分段。
+     只有一段的時候不印小標——單刀球員的清單維持原樣。 */
+  const milestones=careerMilestones();
+  const secs=honorSections();
+  const honorHTML=secs.length===1
+    ?secs[0].groups.map(g=>'· '+honorText(g)).join('<br>')
+    :secs.map(sec=>`<b class="hl">${sec.name}</b><br>`+sec.groups.map(g=>'· '+honorText(g)).join('<br>')).join('<br><br>');
+  const parts=[];
+  if(milestones.length)parts.push(milestones.map(x=>'· '+x).join('<br>'));
+  if(secs.length)parts.push(honorHTML);
+  const hasAny=milestones.length||secs.length;
+  card(hasAny?'gold':'','獎項、大賽與里程碑',
+    hasAny?parts.join('<br><br>'):'（生涯未獲得任何獎項或里程碑）');
   /* 特質與薪資 */
   const tr=[];
   [...TRAIT_KEYS.pos,...TRAIT_KEYS.neg].filter(k=>S.traits[k]).sort((a,b)=>traitColorRank(a)-traitColorRank(b))

@@ -195,15 +195,19 @@ try{
   assert.ok(/投球/.test(r.table)&&/打擊/.test(r.table),'生涯累積數據沒有拆成投打兩張');
   assert.equal((r.table.match(/<table/g)||[]).length,2,'生涯累積數據應該是兩張表');
 
-  /* ── ④ 逐年板：投／打切換，各自是該側完整的六欄 ── */
+  /* ── ④ 逐年板：投／打切換，各自是該側完整的七欄 ──
+     原本是六欄。打者那排補上盜壘（SB 本來就在 st 裡，只有這張表沒印），
+     投手側同步補 WHIP，兩側維持一樣寬——不然切投打的時候整排數字會跳。 */
   assert.equal(r.boardClick,true,'逐年板上找不到投／打切換按鈕');
   assert.deepEqual(r.boardPit.sides,['投球','打擊'],'切換按鈕的標籤不對');
   assert.equal(r.boardPit.on,'pit','逐年板預設應該停在投球側');
-  assert.deepEqual(r.boardPit.hd,['G','IP','W-L','SV','SO','ERA'],
+  assert.deepEqual(r.boardPit.hd,['G','IP','W-L','SV','SO','ERA','WHIP'],
     '投球側的逐年板欄位應該跟單刀投手一模一樣');
   assert.equal(r.boardBat.on,'bat','點了打擊之後沒有切過去');
-  assert.deepEqual(r.boardBat.hd,['G','PA','AVG','HR','RBI','OPS'],
+  assert.deepEqual(r.boardBat.hd,['G','PA','AVG','HR','RBI','OPS','SB'],
     '打擊側的逐年板欄位應該跟單刀野手一模一樣');
+  assert.equal(r.boardPit.hd.length,r.boardBat.hd.length,
+    '投打兩側欄數不一樣，切換時整排數字會跳');
   /* 切到投球側只列真的登板過的球季；打擊側三季都在 */
   assert.equal(r.boardPit.rows,2,'投球側的逐年板應該只有登板過的球季：'+r.boardPit.rows);
   assert.equal(r.boardBat.rows,3,'打擊側的逐年板應該有全部三個球季：'+r.boardBat.rows);

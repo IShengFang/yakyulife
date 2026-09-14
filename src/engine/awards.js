@@ -227,6 +227,26 @@ export function awards(bucket,st){
     }
   }
 
+  /* 3.5 二天一流：同一年投打雙三冠。
+     這個判定必須放在投手三冠與打擊三冠都算完之後，而且只有二刀流碰得到——
+     單刀球員不可能同時滿足兩邊的資格門檻（規定局數與規定打席）。
+     名字取自宮本武藏自創的流派，「二刀流」這個詞就是從二天一流來的。 */
+  if(pitcherTripleCrown&&hitterTripleCrown){
+    h.push(`${y} ${lgN}二天一流`);
+    if(!S.nitenichiLeagues)S.nitenichiLeagues=[];
+    if(!S.nitenichiLeagues.includes(lgN)){
+      S.nitenichiLeagues=[...S.nitenichiLeagues,lgN];
+      S.traits.nitenichi=true;
+      card('gold',`隱藏屬性解鎖：${lgN}二天一流`,
+        `勝投、防禦率、三振——投手三冠。打擊率、全壘打、打點——打擊三冠。`+
+        `<b class="hl">同一年，同一個人，六個王</b>。`+
+        `<br><br>四百年前有個劍客，左右手各拿一把刀，自創了一個流派叫「二天一流」。`+
+        `後來的人把同時投球又打擊的球員叫做「二刀流」，就是從那裡來的。`+
+        `<br>但你今天做到的事，已經不只是拿著兩把刀而已——`+
+        `<b class="hl">${lgN}二天一流</b>，你自成一派。`);
+    }
+  }
+
   /* 4. 年度 MVP（最高榮譽）：先通過真實成績門檻，再與聯盟其他球員競爭。 */
   const MV=starTh(S.lv);
   const isReliever=S.pos==='P'&&!isSP();
