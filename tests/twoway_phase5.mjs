@@ -239,6 +239,10 @@ try{
     '兩個框要各自標投／打');
   assert.ok(!/／/.test(r.cardTW),'兩個框之後不該再有把投打串在同一行的分隔號');
   assert.equal((r.cardSolo.match(/class="statline/g)||[]).length,1,'單刀球員的球季數據卡仍是一個框');
+  /* 二刀流的卡比單刀精簡（一張卡要放兩行），但盜壘與 WHIP 不能省——
+     單刀那版一直都有，二刀流沒有的話等於腳程與被上壘完全看不出來。 */
+  assert.ok(/盜壘 /.test(r.cardTW),'二刀流的球季數據卡沒有印盜壘：'+r.cardTW);
+  assert.ok(/WHIP /.test(r.cardTW),'二刀流的球季數據卡沒有印 WHIP：'+r.cardTW);
 
   console.log(JSON.stringify({soloP:r.soloP,twSeason:r.twSeason,
     hd:{pitCum:r.P.cum.hd,batCum:r.B.cum.hd,pitPro:r.P.pro.hd,batPro:r.B.pro.hd,

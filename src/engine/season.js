@@ -478,14 +478,17 @@ export function accStat(bucket,st){
   t.DEF+=(st.DEF||0);
   t.IP=ipFromOuts(outsFromIP(t.IP)+outsFromIP(st.IP));
 }
+/* 二刀流的球季數據卡：投打各一行。比單刀的 statLine() 精簡，因為一張卡要放兩行——
+   投球側省掉保送與 WHIP、打擊側省掉上壘率與長打率（OPS 已經含了這兩項）。
+   但盜壘不能省：單刀野手的卡一直都有，二刀流卻沒有，等於腳程練起來完全看不出來。 */
 export function pitchLine(st){
-  const role=roleN(S.role); const relief=(S.role==='CL'&&st.SV)?`｜${st.SV}救援`:(S.role==='MR'&&st.HLD)?`｜${st.HLD}中繼`:'';
-  return `登板 ${pitG(st)}｜局數 ${fmtIP(st.IP)}｜${st.W}勝${st.L}敗${relief}｜三振 ${st.SO}｜ERA ${(st.era||0).toFixed(2)}`;
+  const relief=(S.role==='CL'&&st.SV)?`｜${st.SV}救援`:(S.role==='MR'&&st.HLD)?`｜${st.HLD}中繼`:'';
+  return `登板 ${pitG(st)}｜局數 ${fmtIP(st.IP)}｜${st.W}勝${st.L}敗${relief}｜三振 ${st.SO}｜ERA ${(st.era||0).toFixed(2)}｜WHIP ${(baseballWHIP(st)||0).toFixed(2)}`;
 }
 export function batLine(st){
   const obpN=st.PA>0?(st.H+st.BB)/st.PA:0, slgN=slgOf(st);
   const f=v=>v.toFixed(3).replace(/^0/,'');
-  return `出賽 ${st.G}｜打席 ${st.PA}｜打擊率 ${st.AB>0?f(st.avg):'-'}｜OPS ${st.AB>0?f(obpN+slgN):'-'}｜安打 ${st.H}｜全壘打 ${st.HR}｜打點 ${st.RBI}`;
+  return `出賽 ${st.G}｜打席 ${st.PA}｜打擊率 ${st.AB>0?f(st.avg):'-'}｜OPS ${st.AB>0?f(obpN+slgN):'-'}｜安打 ${st.H}｜全壘打 ${st.HR}｜打點 ${st.RBI}｜盜壘 ${st.SB||0}`;
 }
 /* 球季數據卡的內容。二刀流拆成兩個框：投打串在同一行讀不出來哪個數字屬於哪一邊，
    但仍然是同一張卡——那是同一個球季的兩份工作。復健年只投不打(或只打不投)時，
