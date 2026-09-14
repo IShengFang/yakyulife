@@ -1,22 +1,22 @@
-import {S, stepQ, nextStep, stageLabel} from '../core/state.js?v=2.0.1';
-import {R, ri, chance, clamp} from '../core/rng.js?v=2.0.1';
-import {ABL, POS_AB} from '../data/abilities.js?v=2.0.1';
-import {LV, PATHS, teamNick} from '../data/teams.js?v=2.0.1';
-import {keepTh} from '../data/thresholds.js?v=2.0.1';
-import {AMA_ANNUAL} from '../data/economy.js?v=2.0.1';
-import {card, choose, board, divider} from '../ui/dom.js?v=2.0.1';
-import {tlNote, tlPush, tlRestage} from '../ui/timeline.js?v=2.0.1';
-import {allocUI} from '../ui/alloc.js?v=2.0.1';
-import {addAb, ovr, ovrPit, ovrBat, dposReview, statBonusTxt} from '../engine/ability.js?v=2.0.1';
-import {rollInjury, tjCap, tjEffortMult} from '../engine/injury.js?v=2.0.1';
-import {isMrTeamEligible} from '../engine/tenure.js?v=2.0.1';
-import {amateurSeason, proSeason, slgOf, currentSalaryRating, baseballERA, baseballWHIP, seasonGrade} from '../engine/season.js?v=2.0.1';
-import {championshipChance} from '../engine/championship.js?v=2.0.1';
-import {buyoutRemaining, contractAnnual, contractMarketProfile, controlledAnnual, crossOffers, daibaFarewell, extensionOffer, faFlow, fmtMoney, handleDemotion, levelMinAnnual, makeContract, makeOffers, offseasonTradeCheck, pickOfferUI, returnHomeSign, signTo, teamChampRate} from '../engine/contract.js?v=2.0.1';
-import {drawEvents, removeTrait, checkChampionTrait} from './events.js?v=2.0.1';
-import {loveEvent} from './love.js?v=2.0.1';
-import {runDraft, pathChoiceHS, pathChoiceU4, advance} from '../engine/draft.js?v=2.0.1';
-import {endGame} from '../ui/retire.js?v=2.0.1';
+import {S, stepQ, nextStep, stageLabel} from '../core/state.js?v=2.0.2';
+import {R, ri, chance, clamp} from '../core/rng.js?v=2.0.2';
+import {ABL, POS_AB} from '../data/abilities.js?v=2.0.2';
+import {LV, PATHS, teamNick} from '../data/teams.js?v=2.0.2';
+import {keepTh} from '../data/thresholds.js?v=2.0.2';
+import {AMA_ANNUAL} from '../data/economy.js?v=2.0.2';
+import {card, choose, board, divider} from '../ui/dom.js?v=2.0.2';
+import {tlNote, tlPush, tlRestage} from '../ui/timeline.js?v=2.0.2';
+import {allocUI} from '../ui/alloc.js?v=2.0.2';
+import {addAb, ovr, ovrPit, ovrBat, dposReview, statBonusTxt} from '../engine/ability.js?v=2.0.2';
+import {rollInjury, tjCap, tjEffortMult} from '../engine/injury.js?v=2.0.2';
+import {isMrTeamEligible} from '../engine/tenure.js?v=2.0.2';
+import {amateurSeason, proSeason, slgOf, currentSalaryRating, baseballERA, baseballWHIP, seasonGrade} from '../engine/season.js?v=2.0.2';
+import {championshipChance} from '../engine/championship.js?v=2.0.2';
+import {buyoutRemaining, contractAnnual, contractMarketProfile, controlledAnnual, crossOffers, daibaFarewell, extensionOffer, faFlow, fmtMoney, handleDemotion, levelMinAnnual, makeContract, makeOffers, offseasonTradeCheck, pickOfferUI, returnHomeSign, signTo, teamChampRate} from '../engine/contract.js?v=2.0.2';
+import {drawEvents, removeTrait, checkChampionTrait} from './events.js?v=2.0.2';
+import {loveEvent} from './love.js?v=2.0.2';
+import {runDraft, pathChoiceHS, pathChoiceU4, advance} from '../engine/draft.js?v=2.0.2';
+import {endGame} from '../ui/retire.js?v=2.0.2';
 /* ================= 年度流程 ================= */
 export function startYear(){ S.yearOutsideIncome=0; stepQ.length=0; stepQ.push(phasePre,phaseMid,phaseEnd); divider(`${S.year} 年 · ${S.age} 歲 · ${stageLabel()}`); tlPush(); nextStep(); }
 /* 七下保送幾顆「6」。天才需要 5 顆，保送不足的部分要玩家自己擲出來。
@@ -72,7 +72,24 @@ export function convertToTwoWay(origin){
 export function twoWayAudit(){
   if(S.pos!=='TW'||S.stage!=='PRO')return false;
   const L=LV[S.lv]; if(!L||!Number.isFinite(L.min))return false;
-  const bar=L.min-10, p=ovrPit(), b=ovrBat();
+  /* 收斂門檻。原本是 min−10，實測 1,980 段生涯只有 0.3% 在衰退前被收斂——
+     弱側的中位數是 min+5.8，−10 那條線根本碰不到，95% 的人是在 38~39 歲
+     被衰退砍下去才崩的。那不是「二刀流失敗」，那是老了。
+     結果就是兩篇失敗結局幾乎永遠抽不到。
+
+     改成 min−3。實測曲線（衰退前就被收斂的生涯比例）：
+       min−10  0.3%   ← 原本
+       min−5   2.9%
+       min−4   5.9%
+       min−3  15.3%   ← 現在
+       min−2  32.6%
+       min−0  76.4%   ← 弱側單獨要能站穩該層級，等於宣告二刀流不可行
+     曲線在 −3 到 0 之間非常陡，所以這個數字不能隨便動。
+
+     失敗集中在 21~23 歲、剛升上一軍那幾年（79% 崩在日職一軍）：強側把他拉上去了，
+     弱側跟不上新層級的水準。那正是二刀流該失敗的樣子，也對得上失敗結局裡的
+     「你試了四年」。 */
+  const bar=L.min-3, p=ovrPit(), b=ovrBat();
   if(p>=bar&&b>=bar)return false;
   const keepPit=p>=b;
   const lost=keepPit?'打擊':'投球';
