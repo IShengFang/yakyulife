@@ -17,11 +17,11 @@ try{
   await page.goto(`${url}?seed=twoway-phase4`,{waitUntil:'domcontentloaded'});
 
   const r=await page.evaluate(async()=>{
-    const state=await import('./src/core/state.js?v=1.5.12');
-    const phases=await import('./src/flow/phases.js?v=1.5.12');
-    const ability=await import('./src/engine/ability.js?v=1.5.12');
-    const events=await import('./src/flow/events.js?v=1.5.12');
-    const {POS_AB}=await import('./src/data/abilities.js?v=1.5.12');
+    const state=await import('./src/core/state.js?v=2.0.0');
+    const phases=await import('./src/flow/phases.js?v=2.0.0');
+    const ability=await import('./src/engine/ability.js?v=2.0.0');
+    const events=await import('./src/flow/events.js?v=2.0.0');
+    const {POS_AB}=await import('./src/data/abilities.js?v=2.0.0');
 
     /* ① 轉入：新增的那一側從「現有平均 × TW_CONVERT_RATIO」起步，不是從 20 起步。
        從頭擲會讓這個邀請變成陷阱（實測 18.8% → 6.6%）。 */
