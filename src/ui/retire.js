@@ -52,15 +52,35 @@ export const rpSideName=side=>side==='pit'?'投球':'打擊';
    不給 side 就是單刀球員照舊。 */
 export function proYearTableHTML(proLogs,side){
   const isP = side ? side==='pit' : (!twoWayView() && S.pos==='P');
-  const use = side ? proLogs.filter(r=>side==='pit'?twHasPit(r.st):twHasBat(r.st)) : proLogs;
+  /* 二刀流的年表拆成投打兩張，舊版是「那一側沒有產出就整列不畫」。
+     問題是 TJ 手術的復健年（只停投球）與全年報銷，投球側本來就是 0，
+     於是那一年從投球那張表整個消失——玩家回報「退休結算沒顯示投手手術年」。
+     改成：沒有產出但那一年確實掛著那個身分（投球看 role、打擊看 p），
+     就把列留下來，用一條橫跨數據欄的註記說明為什麼是空的。
+     收斂成單刀之後放棄的那一側不會有 role／p，所以不會印出一整排空白列。 */
+  const active = (r,sd) => sd==='pit' ? !!r.role : (r.p!=null&&r.p!=='');
+  const has = (r,sd) => sd==='pit' ? twHasPit(r.st) : twHasBat(r.st);
+  const use = side ? proLogs.filter(r=>has(r,side)||active(r,side)) : proLogs;
   if(!use.length) return '';
+  if(side&&!use.some(r=>has(r,side))) return '';   /* 整段都只有空白列就不要畫這張表 */
   const head = isP
     ? `<tr><th>年</th><th>齡</th><th style="text-align:left">球隊</th><th>G</th><th>IP</th><th>W</th><th>L</th><th>SV</th><th>HLD</th><th>SO</th><th>BB</th><th>ERA</th><th>WHIP</th></tr>`
     : `<tr><th>年</th><th>齡</th><th style="text-align:left">球隊</th><th>G</th><th>PA</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th><th>H</th><th>HR</th><th>RBI</th><th>BB</th><th>SB</th><th>DEF</th></tr>`;
+  const cols = isP ? 10 : 12;   /* 年／齡／球隊之後的數據欄數，註記列用來 colspan */
   const rows = use.map(r => {
     const cS = r.inj ? 'color:var(--bad);font-weight:700;' : '';
     const s = r.st || blankStat();
     const yr = `<td>${settlementYearHTML(r.y,proChampionshipYear(r.y))}</td><td>${r.age}</td>`;
+    /* 掛著身分卻沒有產出的那一年：寫清楚原因，不要印一整排 0 假裝有打。 */
+    if(side&&!has(r,side)){
+      const both = !twHasPit(r.st)&&!twHasBat(r.st);
+      const note = both ? (r.line||'傷缺全季')
+        : side==='pit' ? '本季未登板（復健中）' : '本季無打席';
+      const tag = side==='pit' ? (r.role?'·'+roleN(r.role):'') : (r.p?'·'+r.p:'');
+      return `<tr style="color:var(--bad);font-weight:700;">${yr}`+
+        `<td style="text-align:left;white-space:nowrap">${r.tm}${tag}</td>`+
+        `<td colspan="${cols}" style="text-align:left">${note}</td></tr>`;
+    }
     if(isP){
       /* 投球那張的球隊欄標定位(先發/中繼/終結者)，打擊那張標實際守位。 */
       const tag = r.role ? '·'+roleN(r.role) : '';

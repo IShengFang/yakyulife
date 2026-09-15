@@ -506,17 +506,21 @@ export function accStat(bucket,st){
     if((st.PA||0)>0||(st.G||0)>0)t.yrB=(t.yrB||0)+1;
   }
 }
-/* 二刀流的球季數據卡：投打各一行。比單刀的 statLine() 精簡，因為一張卡要放兩行——
-   投球側省掉保送與 WHIP、打擊側省掉上壘率與長打率（OPS 已經含了這兩項）。
-   但盜壘不能省：單刀野手的卡一直都有，二刀流卻沒有，等於腳程練起來完全看不出來。 */
+/* 二刀流的球季數據卡：投打各一行。比單刀的 statLine() 精簡，打擊側省掉上壘率與
+   長打率（OPS 已經含了這兩項）。
+   但有兩項不能省，因為省掉之後那個能力就完全看不見了：
+     ‧盜壘——單刀野手的卡一直都有，二刀流沒有的話，腳程練起來看不出任何差別。
+     ‧四死球——玩家回報「單年結算投打四壞數都沒顯示了」。投手側的控球與打者側的
+       選球，成績上唯一的出口就是四死球；不印出來，那兩項練了等於沒練。
+   兩行在手機上本來就會折行，多這幾個字不會讓版面更糟。 */
 export function pitchLine(st){
   const relief=(S.role==='CL'&&st.SV)?`｜${st.SV}救援`:(S.role==='MR'&&st.HLD)?`｜${st.HLD}中繼`:'';
-  return `登板 ${pitG(st)}｜局數 ${fmtIP(st.IP)}｜${st.W}勝${st.L}敗${relief}｜三振 ${st.SO}｜ERA ${(st.era||0).toFixed(2)}｜WHIP ${(baseballWHIP(st)||0).toFixed(2)}`;
+  return `登板 ${pitG(st)}｜局數 ${fmtIP(st.IP)}｜${st.W}勝${st.L}敗${relief}｜三振 ${st.SO}｜四死 ${pitBB(st)}｜ERA ${(st.era||0).toFixed(2)}｜WHIP ${(baseballWHIP(st)||0).toFixed(2)}`;
 }
 export function batLine(st){
   const obpN=st.PA>0?(st.H+st.BB)/st.PA:0, slgN=slgOf(st);
   const f=v=>v.toFixed(3).replace(/^0/,'');
-  return `出賽 ${st.G}｜打席 ${st.PA}｜打擊率 ${st.AB>0?f(st.avg):'-'}｜OPS ${st.AB>0?f(obpN+slgN):'-'}｜安打 ${st.H}｜全壘打 ${st.HR}｜打點 ${st.RBI}｜盜壘 ${st.SB||0}`;
+  return `出賽 ${st.G}｜打席 ${st.PA}｜打擊率 ${st.AB>0?f(st.avg):'-'}｜OPS ${st.AB>0?f(obpN+slgN):'-'}｜安打 ${st.H}｜全壘打 ${st.HR}｜打點 ${st.RBI}｜保送 ${st.BB||0}｜盜壘 ${st.SB||0}`;
 }
 /* 球季數據卡的內容。二刀流拆成兩個框：投打串在同一行讀不出來哪個數字屬於哪一邊，
    但仍然是同一張卡——那是同一個球季的兩份工作。復健年只投不打(或只打不投)時，

@@ -207,7 +207,14 @@ export function phasePre(){
   else if(S.rehab>0){ S.rehab--; S.skipMid=true; S.seasonFactor=0; S.marketInjury='rehab';
     card('bad','復健年',`大傷尚未痊癒，本季確定<b class="dn">全年報銷</b>，只能在復健室度過。（擲骰減為 2 顆）`);
     const dummySt = {G:0,PA:0,AB:0,H:0,HR:0,RBI:0,SB:0,BB:0,W:0,L:0,SV:0,HLD:0,IP:0,SO:0,ER:0,avg:0,era:0,WHIP:0,DEF:0};
-    S.log.push({y:S.year,age:S.age,tm:S.stage==='PRO'?S.teamName():(S.team||stageLabel()),line:'復健年・全年報銷', inj: true, st: S.stage==='PRO'?dummySt:null}); }
+    /* lv／p／role 要跟正常球季那一列帶一樣的欄位：二刀流的年表是投打兩張分開畫的，
+       靠 role（那年是投手身分）與 p（那年有守位）判斷這一列屬於哪一側。
+       缺了它們，手術／全年報銷那一年會從兩張表同時消失——玩家回報的
+       「退休結算沒顯示投手手術年」就是這個。 */
+    S.log.push({y:S.year,age:S.age,tm:S.stage==='PRO'?S.teamName():(S.team||stageLabel()),
+      lv:S.stage==='PRO'?S.lv:null, p:S.pos==='P'?null:(S.dpos||''),
+      role:(S.pos==='P'||S.pos==='TW')?S.role:null,
+      line:'復健年・全年報銷', inj: true, st: S.stage==='PRO'?dummySt:null}); }
   let afterAsk=()=>{
     let n=S.skipMid?2:(()=>{const r=R();return r<0.35?3:r<0.75?4:r<0.95?5:6;})();
     if(S.traits.distract&&!S.skipMid)n=Math.max(2,n-1); /* 外務纏身 */
