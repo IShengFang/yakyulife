@@ -1,13 +1,13 @@
-import {SEED, setSeed, seedInit} from './core/rng.js?v=2.0.6';
-import {S, setS, newState} from './core/state.js?v=2.0.6';
-import {APP_VER} from './config.js?v=2.0.6';
-import {POSN} from './data/abilities.js?v=2.0.6';
-import {LV} from './data/teams.js?v=2.0.6';
-import {$, card, modalClose, actToggleSync} from './ui/dom.js?v=2.0.6';
-import {THEME_KEY, BIG_KEY, applyTheme, applyMobileUI, applyBigText, updDispSum} from './ui/prefs.js?v=2.0.6';
-import {allocFullClose} from './ui/alloc.js?v=2.0.6';
-import {TL, resetTL, renderTimeline, tlScrollTo} from './ui/timeline.js?v=2.0.6';
-import {startYear} from './flow/phases.js?v=2.0.6';
+import {SEED, setSeed, seedInit} from './core/rng.js?v=2.0.7';
+import {S, setS, newState} from './core/state.js?v=2.0.7';
+import {APP_VER} from './config.js?v=2.0.7';
+import {POSN} from './data/abilities.js?v=2.0.7';
+import {LV} from './data/teams.js?v=2.0.7';
+import {$, card, modalClose, actToggleSync} from './ui/dom.js?v=2.0.7';
+import {THEME_KEY, BIG_KEY, applyTheme, applyMobileUI, applyBigText, updDispSum} from './ui/prefs.js?v=2.0.7';
+import {allocFullClose} from './ui/alloc.js?v=2.0.7';
+import {TL, resetTL, renderTimeline, tlScrollTo} from './ui/timeline.js?v=2.0.7';
+import {startYear} from './flow/phases.js?v=2.0.7';
 
 /* ================= 開場設定 ================= */
 /* iOS Safari zoom guards. Pinch: Safari ignores maximum-scale/user-scalable, so the
@@ -119,7 +119,7 @@ function bindPosSeg(){
 }
 bindPosSeg();
 /* ── 二刀流入口 ──
-   v2.0.6 起就是守位列的第五顆按鈕：它跟其他四個互斥、行為一樣，沒有理由做成
+   v2.0.7 起就是守位列的第五顆按鈕：它跟其他四個互斥、行為一樣，沒有理由做成
    另一種控制項。差別只有底部一條金線，以及選中時多出的一行說明——
    平常首頁保持安靜，不用一段文字去解釋一個還沒被選的選項。
 

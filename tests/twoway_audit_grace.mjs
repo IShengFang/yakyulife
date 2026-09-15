@@ -28,10 +28,10 @@ try{
   await page.goto(`${url}?seed=twoway-audit-grace`,{waitUntil:'domcontentloaded'});
 
   const r=await page.evaluate(async()=>{
-    const state =await import('./src/core/state.js?v=2.0.6');
-    const phases=await import('./src/flow/phases.js?v=2.0.6');
-    const ability=await import('./src/engine/ability.js?v=2.0.6');
-    const {LV}  =await import('./src/data/teams.js?v=2.0.6');
+    const state =await import('./src/core/state.js?v=2.0.7');
+    const phases=await import('./src/flow/phases.js?v=2.0.7');
+    const ability=await import('./src/engine/ability.js?v=2.0.7');
+    const {LV}  =await import('./src/data/teams.js?v=2.0.7');
 
     /* 回報案例的能力側寫：投球側撐得住大聯盟，打擊側只到 2A 的水準。 */
     const AB={sta:60,vel:62,ctl:60,brk:61,con:52,pow:52,spd:44,eye:48,rng:24,fld:24,arm:24};
