@@ -12,7 +12,9 @@
      ① 資料層：真的存在 role:'*' 但 target 落在單側的卡（不然這支測試在驗空氣）
      ② 收斂成投手後，那些卡只會加到投手的四項
      ③ 收斂成打者後，那些卡只會加到打者那一組
-     ④ 大巧不工鎖定的能力如果落在放棄的那一側，要改指到留下來這側 */
+     ④ 大巧不工鎖定的能力如果落在放棄的那一側，特質直接解除——不改指到別的能力，
+        那等於把玩家沒選過的東西塞給他。解鎖條件就是「連續三年澆同一個工具」，
+        工具沒了特質就沒了，跟二刀流的沉沒成本是同一回事。 */
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 
@@ -85,7 +87,8 @@ try{
       Object.assign(s.ab,DEAD_BAT); s.traits.combo=true;
       s.teamName=function(){return 'X';};
       phases.twoWayAudit();
-      return {pos:s.pos,comboKey:s.comboKey,samePickKey:s.samePickKey,samePick:s.samePick};
+      return {pos:s.pos,comboKey:s.comboKey,combo:!!s.traits.combo,
+        removed:s.removed.slice(),samePickKey:s.samePickKey,samePick:s.samePick};
     })();
     const comboBat=(()=>{
       const s=state.newState('收斂',0,'TW',null); state.setS(s);
@@ -94,7 +97,8 @@ try{
       Object.assign(s.ab,DEAD_PIT); s.traits.combo=true;
       s.teamName=function(){return 'X';};
       phases.twoWayAudit();
-      return {pos:s.pos,comboKey:s.comboKey,samePickKey:s.samePickKey,samePick:s.samePick};
+      return {pos:s.pos,comboKey:s.comboKey,combo:!!s.traits.combo,
+        removed:s.removed.slice(),samePickKey:s.samePickKey,samePick:s.samePick};
     })();
     /* 沒有被收斂的人不該被動到。 */
     const comboIntact=(()=>{
@@ -104,7 +108,7 @@ try{
       Object.assign(s.ab,{sta:70,vel:70,ctl:68,brk:69,con:68,pow:70,spd:60,eye:66});
       s.traits.combo=true; s.teamName=function(){return 'X';};
       const fell=phases.twoWayAudit();
-      return {fell,comboKey:s.comboKey};
+      return {fell,comboKey:s.comboKey,combo:!!s.traits.combo};
     })();
 
     return {crossPit,crossBat,asPit,asBat,comboPit,comboBat,comboIntact};
@@ -126,16 +130,19 @@ try{
     }
   }
 
-  /* ④ 大巧不工要改指到留下來的那一側 */
-  assert.ok(POSKEYS(r.comboPit.pos).includes(r.comboPit.comboKey),
-    `收斂成投手後，大巧不工還鎖在「${r.comboPit.comboKey}」`);
-  assert.ok(POSKEYS(r.comboBat.pos).includes(r.comboBat.comboKey),
-    `收斂成打者後，大巧不工還鎖在「${r.comboBat.comboKey}」`);
-  assert.equal(r.comboPit.samePickKey,null,'收斂後專精連續計數要重來');
-  assert.equal(r.comboPit.samePick,0,'收斂後專精連續計數要歸零');
+  /* ④ 大巧不工要整個解除，不是改指到別的能力 */
+  for(const [name,x] of [['收斂成投手',r.comboPit],['收斂成打者',r.comboBat]]){
+    assert.equal(x.combo,false,`${name}：專精的工具沒了，大巧不工應該解除`);
+    assert.equal(x.comboKey,null,
+      `${name}：大巧不工解除後 comboKey 應該清空，而不是改指到「${x.comboKey}」`);
+    assert.ok(x.removed.includes('大巧不工'),`${name}：解除要記進 S.removed，特質列表才看得到`);
+    assert.equal(x.samePickKey,null,`${name}：專精連續計數要重來`);
+    assert.equal(x.samePick,0,`${name}：專精連續計數要歸零`);
+  }
   /* 沒被收斂的人不該被動到 */
   assert.equal(r.comboIntact.fell,false,'這組能力不該被收斂，測試前提不成立');
   assert.equal(r.comboIntact.comboKey,'pow','沒有被收斂就不該去動大巧不工鎖定的能力');
+  assert.equal(r.comboIntact.combo,true,'沒有被收斂就不該拔掉大巧不工');
 
   assert.equal(errors.length,0,errors.join('\n'));
   console.log(JSON.stringify({crossPit:r.crossPit,crossBat:r.crossBat,
