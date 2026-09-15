@@ -70,7 +70,20 @@ export function eventCombinationOptions(state){
   const bottom=pair.find(route=>route.name==='均衡生活')||pair.find(route=>route!==top);
   return [top,training,bottom].filter(Boolean);
 }
-function eventTarget(ev){ return ev.target in S.ab?ev.target:pick(POS_AB[S.pos]); }
+/* 事件卡指定的能力，必須是「現在這個守位真的會用到的能力」。
+   舊版只檢查 `ev.target in S.ab`——而 S.ab 是只增不減的：二刀流被強制收斂成投手
+   之後，con/pow/spd/eye 四把打擊工具還留在 S.ab 裡（那是生涯紀錄的一部分，
+   也是收斂卡說的「那些年投進打擊的訓練，沒有人會還給你」），於是 role:'*'
+   而 target 寫死在另一側的卡片就會繼續加在用不到的數值上。
+   實測有四張：id 2（target pow）落在收斂後的投手身上，
+   id 20／91／92（target ctl）落在收斂後的打者身上。
+   純投手與純打者碰不到這個洞，因為他們的 S.ab 根本沒有另一側的鍵。
+   遊戲裡其他所有寫能力的地方（訓練配點、傷病、戀愛、衰退）本來就都過
+   POS_AB[S.pos]，只有這裡沒有。 */
+function eventTarget(ev){
+  const keys=POS_AB[S.pos]||[];
+  return keys.includes(ev.target)?ev.target:pick(keys);
+}
 function eventCash(mode){
   const base={CPBL2:5,CPBL1:20,NPB2:10,NPB1:50,R:5,A1:7,A2:10,A3:15,MLB:100}[S.lv]||5;
   const traitBonus=S.traits.adking?1.1:1;

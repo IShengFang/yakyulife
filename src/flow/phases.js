@@ -136,10 +136,26 @@ export function twoWayAudit(){
     ['rng','fld','arm'].forEach(k=>{ if(!(k in S.ab)){ S.ab[k]=ri(18,26); S.pot[k]=ri(28,40); } });
     S.dpos='DH';
   }
+  /* 大巧不工鎖定的能力如果落在放棄的那一側，每年那顆免費骰就會一直加在用不到的
+     數值上。改指到留下來這側目前最強的工具——特質的意思是「把汗水全澆在同一個
+     工具上」，工具沒了就換一個，不是讓它空轉。 */
+  let comboMoved=null;
+  {
+    const keys=POS_AB[S.pos]||[];
+    const stale=k=>k&&!keys.includes(k);
+    if(stale(S.comboKey)||stale(S.samePickKey)){
+      const to=keys.slice().sort((x,y)=>(S.ab[y]||0)-(S.ab[x]||0))[0]||null;
+      if(stale(S.comboKey)){ if(S.traits&&S.traits.combo)comboMoved=[S.comboKey,to]; S.comboKey=to; }
+      if(stale(S.samePickKey)){ S.samePickKey=null; S.samePick=0; }
+    }
+  }
   card('bad','二刀流終止',
     `球團把數據攤在你面前:你的${lost}已經跟不上<b class="dn">${J.n}</b>的水準了。`+
     `再撐下去只是兩頭落空——從今天起，你專心當一個<b class="hl">${keepPit?'投手':'打者'}</b>。`+
-    `<br>那些年投進${lost}的訓練，沒有人會還給你。`);
+    `<br>那些年投進${lost}的訓練，沒有人會還給你。`+
+    (comboMoved&&comboMoved[1]
+      ? `<br>（大巧不工原本專精的「${ABL[comboMoved[0]]}」你已經用不到了，改專精「<b class="hl">${ABL[comboMoved[1]]}</b>」。）`
+      : ''));
   /* 七下路線的天才是系統送的，失去二刀流身分就一併收回;自己擲出五顆 6 的不拔。
      S.six 必須同時歸零——解鎖條件是 S.six>=5 && !genius && age<22，
      不歸零的話下一次擲骰就會立刻再解鎖一次，等於白拔。 */
