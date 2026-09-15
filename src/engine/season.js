@@ -1,7 +1,7 @@
 import {S, blankStat, bucketOf, nextStep, stageLabel} from '../core/state.js?v=2.0.6';
 import {R, ri, chance, clamp, N0} from '../core/rng.js?v=2.0.6';
 import {POS_ADJ_RUNS, POS_PT_BAR} from '../data/abilities.js?v=2.0.6';
-import {LV, HS_CUPS, U_CUPS, spLoad, envRate, envAvg, envHR9, ENV_K} from '../data/teams.js?v=2.0.6';
+import {LV, HS_CUPS, U_CUPS, spLoad, envRate, envAvg, envHR9, ENV_K, hrCapRate, avgCapOf, softCap, softBoost} from '../data/teams.js?v=2.0.6';
 import {pitchTh, batTh} from '../data/thresholds.js?v=2.0.6';
 import {card, board} from '../ui/dom.js?v=2.0.6';
 import {ovr, careerAllStars, toolGap} from './ability.js?v=2.0.6';
@@ -238,10 +238,13 @@ export function simSeason(lv){
        Contact 高不會變成全壘打，它走的是打擊率那條線。
        打擊率有上界，所以用飽和曲線；全壘打率沒有上限，一個大聯盟等級的砲手
        掉到中職就是會打出六十轟，那是對的。 */
-    const E=L.env;
-    st.avg=clamp(envAvg(E.avg,q,par)+(a.sta-50)*0.0003+N0(0.014),0.150,0.430);
+    const E=L.env, hrCap=hrCapRate(L), avgCap=avgCapOf(L);
+    st.avg=clamp(envAvg(E.avg,q,par)+(a.sta-50)*0.0003+N0(0.014),0.150,avgCap);
     st.H=Math.round(st.AB*st.avg); st.avg=st.AB?st.H/st.AB:0;
-    st.HR=Math.round(st.AB*Math.max(0.0012,envRate(E.hr,a.pow,par,ENV_K.hr,1))*(0.85+R()*0.3));
+    /* 全壘打率沒有自然上界（打擊率那條線是飽和曲線，本來就有），所以要自己彎。
+       softCap 讓一般球員原封不動、頂尖球員收向該層級的天花板：
+       中職 pow 80 從原本的「期望 65 轟」收到 42 轟——真實紀錄是 39 轟。 */
+    st.HR=Math.round(st.AB*softCap(Math.max(0.0012,envRate(E.hr,a.pow,par,ENV_K.hr,1))*(0.85+R()*0.3),hrCap));
     const fullSeasonSB=clamp((a.spd-45)*0.5+(a.spd-par)*1.3+N0(4),0,70);
     st.SB=scaledSteals(fullSeasonSB,st.PA,L.g); /* 盜壘依實際打席機會縮放，不能只打十幾場卻跑出完整球季產量。 */
     st.RBI=Math.round(st.HR*2.1+(st.H-st.HR)*0.30);
@@ -287,9 +290,16 @@ export function applySeasonForm(st,lv){
     if(Number.isFinite(st.dPit))st.dPit+=st.form===1?4:st.form===-1?-4:0;
   }
   if(S.pos!=='P'){
-    /* 打者:安打/全壘打/盜壘/打點隨倍率;打席與出賽數不變(打率連帶變動) */
-    st.H=Math.round(st.H*m); st.HR=Math.round(st.HR*m); st.SB=Math.round(st.SB*m);
-    if(st.H>st.AB)st.H=st.AB;                   /* 安打不可超過打數 */
+    /* 打者:安打/全壘打/盜壘/打點隨倍率;打席與出賽數不變(打率連帶變動)。
+       倍率作用在「率值」而且走 softBoost——舊版是直接 st.H*=1.2，而基礎的打擊率
+       上界寫在這之前，所以 .430 那條線根本不是上限，生涯年可以把它推到 .516。
+       現在離天花板還遠的人照樣吃滿 1.2，已經貼著天花板的人只前進剩餘空間。 */
+    const LF=LV[lv]||LV.CPBL1, hrCap=hrCapRate(LF), avgCap=avgCapOf(LF);
+    if(st.AB>0){
+      st.H=Math.min(st.AB,Math.round(st.AB*softBoost(st.H/st.AB,avgCap,m)));
+      st.HR=Math.min(st.H,Math.round(st.AB*softBoost(st.HR/st.AB,hrCap,m)));
+    }
+    st.SB=Math.round(st.SB*m);
     st.avg=st.AB?st.H/st.AB:0;
     st.RBI=Math.round(st.HR*2.1+(st.H-st.HR)*0.30);
     if(Number.isFinite(st.dBat))st.dBat+=st.form===1?4:st.form===-1?-4:0;
@@ -617,7 +627,11 @@ export function formBat(st,lv,p){
   const scale=st.G>0?g/st.G:1;
   st.G=g; st.PA=Math.round(st.PA*scale); st.AB=Math.round(st.AB*scale);
   st.BB=Math.round((st.BB||0)*scale);
-  const avg=clamp(avg0*(1+f*0.55),0.100,0.480), hr=Math.max(0,hrR*(1+f*1.10));
+  /* 舊版這裡自己寫了一條 clamp(…,0.100,0.480)，比基礎那條 0.430 還寬——
+     兩條線互相打臉，而且都在加成之前。現在統一收到該層級的天花板底下。 */
+  const hrCap=hrCapRate(L), avgCap=avgCapOf(L);
+  const avg=Math.max(0.100,softBoost(avg0,avgCap,1+f*0.55));
+  const hr=Math.max(0,softBoost(hrR,hrCap,1+f*1.10));
   st.H=Math.min(st.AB,Math.round(st.AB*avg));
   st.HR=Math.min(st.H,Math.round(st.AB*hr));
   st.RBI=Math.max(0,Math.round(st.H*rbiPerH*(1+f*0.6)));
@@ -646,8 +660,10 @@ export function proSeason(){
       /* 投法只影響投球側:二刀流的 st.d 是兩側合成的，加完再重算一次。 */
       if(S.pos==='TW'){ st.dPit+=em; st.d=twoWayD(st.dPit,st.dBat); } else st.d+=em; } }
   if(S.traits.onetool&&S.seasonFactor>0){ /* 工具人:那項工具讓他「多爭取」到代打/代跑/代守上場(加成,非砍半) */
-    const boost=1.25; /* 工具帶來的額外上場機會 */
-    ['G','PA','AB'].forEach(k=>{ if(typeof st[k]==='number')st[k]=Math.round(st[k]*boost); });
+    /* 出賽數不可以超過該層級的場次——原本直接 ×1.25，120 場的中職會印出 150 場。
+       倍率改成「補到滿季為止」，率值不動（多上場本來就該多打，那是合理的）。 */
+    const gCap=(LV[seasonLv]||LV.CPBL1).g||120;
+    const boost=st.G>0?Math.min(1.25,gCap/st.G):1.25;
     /* 累積型數據隨打席等比微調 */
     ['H','HR','RBI','SB','BB'].forEach(k=>{ if(typeof st[k]==='number')st[k]=Math.round(st[k]*boost); });
     st.avg=st.AB>0?st.H/st.AB:0; capSteals(st); }

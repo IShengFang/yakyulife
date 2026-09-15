@@ -106,24 +106,65 @@ export const ENV_DOWN=0.62;
 export const AVG_LIFT=0.30, AVG_K=0.0188;
 export const LV={
  CPBL2:{n:'中職二軍',par:34,min:30,g:80, rot:5,org:'CPBL',
-   env:{avg:.265,hr:.016,k9:6.3, bb9:3.30,h9:9.4, era:4.20}},
+   env:{avg:.265,hr:.016,k9:6.3, bb9:3.30,h9:9.4, era:4.20}, cap:{hr:53,avg:.453}},
  CPBL1:{n:'中職一軍',par:44,min:41,g:120,rot:5,org:'CPBL',top:'CPBL',
-   env:{avg:.259,hr:.019,k9:6.6, bb9:2.87,h9:9.1, era:3.72}},
+   env:{avg:.259,hr:.019,k9:6.6, bb9:2.87,h9:9.1, era:3.72}, cap:{hr:45,avg:.440}},
  NPB2:{n:'日職二軍',par:47,min:44,g:100,rot:6,org:'NPB',
-   env:{avg:.250,hr:.017,k9:7.0, bb9:3.10,h9:8.5, era:3.40}},
+   env:{avg:.250,hr:.017,k9:7.0, bb9:3.10,h9:8.5, era:3.40}, cap:{hr:57,avg:.424}},
  NPB1:{n:'日職一軍',par:53,min:50,g:143,rot:6,org:'NPB',top:'NPB',
-   env:{avg:.244,hr:.019,k9:7.29,bb9:2.67,h9:8.22,era:3.01}},
+   env:{avg:.244,hr:.019,k9:7.29,bb9:2.67,h9:8.22,era:3.01}, cap:{hr:69,avg:.412}},
  R:{n:'新人聯盟',par:41,min:39,g:55, rot:5,org:'MiLB',
-   env:{avg:.252,hr:.022,k9:8.8, bb9:4.20,h9:8.6, era:4.60}},
+   env:{avg:.252,hr:.022,k9:8.8, bb9:4.20,h9:8.6, era:4.60}, cap:{hr:55,avg:.494}},
  A1:{n:'1A',par:45,min:43,g:110,rot:5,org:'MiLB',
-   env:{avg:.252,hr:.024,k9:8.7, bb9:3.80,h9:8.5, era:4.40}},
+   env:{avg:.252,hr:.024,k9:8.7, bb9:3.80,h9:8.5, era:4.40}, cap:{hr:93,avg:.480}},
  A2:{n:'2A',par:49,min:47,g:120,rot:5,org:'MiLB',
-   env:{avg:.250,hr:.027,k9:8.6, bb9:3.60,h9:8.5, era:4.30}},
+   env:{avg:.250,hr:.027,k9:8.6, bb9:3.60,h9:8.5, era:4.30}, cap:{hr:86,avg:.466}},
  A3:{n:'3A',par:54,min:52,g:130,rot:5,org:'MiLB',
-   env:{avg:.249,hr:.030,k9:8.4, bb9:3.50,h9:8.6, era:4.30}},
+   env:{avg:.249,hr:.030,k9:8.4, bb9:3.50,h9:8.6, era:4.30}, cap:{hr:79,avg:.453}},
  MLB:{n:'大聯盟',par:59,min:56,g:162,rot:5,org:'MiLB',top:'MLB',
-   env:{avg:.244,hr:.034,k9:8.5, bb9:3.40,h9:8.3, era:4.17}},
+   env:{avg:.244,hr:.034,k9:8.5, bb9:3.40,h9:8.3, era:4.17}, cap:{hr:84,avg:.452}},
 };
+/* ───────── 單季的物理天花板 ─────────
+   cap.hr 是「該層級滿季的全壘打支數」，cap.avg 是打擊率。兩條都是漸近線而不是硬夾：
+   基礎值用 softCap() 彎向它，生涯年／狀態火燙等加成用 softBoost() 只吃掉剩餘空間，
+   所以再怎麼疊乘都不會越過，而一般球員完全感覺不到（見 season.js）。
+
+   三個頂級聯盟取真實的單季紀錄當錨點：
+     中職一軍　39 轟（高國輝 2015）　　打擊率 .414（王柏融 2016）
+     日職一軍　60 轟（バレンティン 2013）打擊率 .389（ランディ・バース 1986）
+     大聯盟　　73 轟（Bonds 2001）　　　打擊率 .426（Lajoie 1901）
+   全壘打取紀錄 ×1.15——破紀錄可以，離譜不行。
+   打擊率取 ×1.06：那三個打擊率紀錄分別是 1901／1986／2016 年的極端球季，
+   再乘 1.15 會得到 .476／.447／.490，等於畫一條沒人碰得到的線，那就不是天花板了。
+
+   養成層級沒有紀錄可查，從母聯盟往下每階放寬（全壘打率 ×1.18、打擊率 ×1.03，
+   打擊率另外硬性不超過 .500）——層級越低越好打，天花板本來就該更高。
+   支數是用該層級的滿季打數換算的，所以 55 場的新人聯盟不會因為場次少就被低估。 */
+/* 滿季打數（近似）：打席 ≈ 場次 × 4.25，其中約一成是四死球。 */
+export const nomAB=L=>(L.g||120)*4.25*0.90;
+/* 全壘打天花板換算成「每打數」。 */
+export const hrCapRate=L=>(L.cap&&L.cap.hr?L.cap.hr/nomAB(L):Infinity);
+export const avgCapOf=L=>((L.cap&&L.cap.avg)||0.500);
+/* 基礎率值彎向天花板。x 遠小於 1 時幾乎原封不動（一般球員無感），
+   x 接近與超過 1 時平滑地收向 cap，永遠不會越過。
+   指數 SOFT_N 決定轉彎有多急：越大越接近「線性到底再硬轉彎」。
+   試過 4，中職力量 80 的中位掉到 37 轟——比真實紀錄（39）還低，那就不是
+   「破紀錄可以」而是「破不了紀錄」。6 讓它落在 41~42 轟，剛好在紀錄之上一點。 */
+export const SOFT_N=6;
+export function softCap(raw,cap){
+  if(!(cap>0)||!(raw>0))return raw;
+  const x=raw/cap;
+  return cap*x/Math.pow(1+Math.pow(x,SOFT_N),1/SOFT_N);
+}
+/* 加成（生涯年、狀態火燙……）只吃掉「距離天花板的剩餘空間」的一部分。
+   取 min(直接乘, cap−剩餘/m)：離天花板還遠的人照常吃滿倍率，
+   已經貼著天花板的人只前進剩餘空間的 (1−1/m)，所以疊幾層都越不過去。
+   m ≤ 1（低潮）沒有爆掉的風險，直接乘。 */
+export function softBoost(rate,cap,m){
+  if(!(m>1)||!(cap>0))return rate*m;
+  const r=Math.min(rate,cap);
+  return Math.min(r*m, cap-(cap-r)/m);
+}
 /* 生涯評價那一端用得到的：把 bucket(CPBL/NPB/MLB/MINOR)換成該聯盟的環境。 */
 export const TOP_LV={CPBL:'CPBL1',NPB:'NPB1',MLB:'MLB',MINOR:'A3'};
 export const envOf=b=>LV[TOP_LV[b]||'CPBL1'].env;

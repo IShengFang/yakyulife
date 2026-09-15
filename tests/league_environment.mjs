@@ -35,7 +35,7 @@ try{
     const state=await import('./src/core/state.js?v=2.0.6');
     const rng=await import('./src/core/rng.js?v=2.0.6');
     const season=await import('./src/engine/season.js?v=2.0.6');
-    const {LV,envWhip,envLeagueOps}=await import('./src/data/teams.js?v=2.0.6');
+    const {LV,envWhip,envLeagueOps,hrCapRate}=await import('./src/data/teams.js?v=2.0.6');
     const th=await import('./src/data/thresholds.js?v=2.0.6');
     const med=a=>{a=a.slice().sort((x,y)=>x-y);return a[a.length>>1];};
 
@@ -67,7 +67,7 @@ try{
     for(const lv of ['CPBL1','NPB1','MLB']){
       const E=LV[lv].env, par=LV[lv].par;
       const P=pit(lv,par,300), P80=pit(lv,80,120), Plow=pit(lv,30,120);
-      const B=bat(lv,par,300), B80=bat(lv,80,300);
+      const B=bat(lv,par,300), B80=bat(lv,80,300), B70=bat(lv,70,300);
       out[lv]={env:{era:E.era,whip:+envWhip(E).toFixed(3),k9:E.k9,bb9:E.bb9,h9:E.h9,avg:E.avg},
         par:{era:+med(P.map(x=>x.era)).toFixed(2),whip:+med(P.map(x=>x.whip)).toFixed(3),
              k9:+med(P.map(x=>x.k9)).toFixed(2),bb9:+med(P.map(x=>x.bb9)).toFixed(2),
@@ -75,6 +75,8 @@ try{
         top:{era:+med(P80.map(x=>x.era)).toFixed(2),HR:med(B80.map(x=>x.HR)),
              hrRate:+med(B80.map(x=>x.hrRate)).toFixed(4),
              avg:+med(B80.map(x=>x.avg)).toFixed(3)},
+        elite:{HR:med(B70.map(x=>x.HR)),hrRate:+med(B70.map(x=>x.hrRate)).toFixed(4)},
+        cap:{hr:LV[lv].cap.hr,hrRate:+hrCapRate(LV[lv]).toFixed(4),avg:LV[lv].cap.avg},
         low:{era:+med(Plow.map(x=>x.era)).toFixed(2),
              whip:+med(Plow.map(x=>x.whip)).toFixed(3)},
         hrAllowed:{always:P.every(x=>Number.isFinite(x.pHR)),
@@ -132,8 +134,12 @@ try{
      只驗中職對日職、中職對大聯盟這兩條。日職對大聯盟刻意不驗：日職的聯盟長打環境
      （每打數 1.9%）比大聯盟（3.4%）低很多，par 卻只差 6 點，所以固定球員從日職
      換到大聯盟，長打率反而會升約 15%。真實世界的證據兩邊都有（大谷升、鈴木誠也與
-     吉田正尚降），而中職那兩條才是這次要修的東西。 */
-  const rate=Object.fromEntries(L.map(lv=>[lv,r[lv].top.hrRate]));
+     吉田正尚降），而中職那兩條才是這次要修的東西。
+
+     採樣改成力量 70 的頂級砲手，不是 80。理由見 ⑥c：單季天花板是照各聯盟的真實
+     紀錄訂的（中職 39 轟、大聯盟 73 轟），中職那條線比大聯盟緊得多，所以在能力
+     最頂端的三點，這個排序會反轉。那是天花板的必然代價，不是模型壞掉。 */
+  const rate=Object.fromEntries(L.map(lv=>[lv,r[lv].elite.hrRate]));
   assert.ok(rate.CPBL1>rate.NPB1,
     `同一個砲手在中職的長打率應該高於日職：${rate.CPBL1} vs ${rate.NPB1}`);
   assert.ok(rate.CPBL1>rate.MLB,
@@ -143,8 +149,25 @@ try{
 
   /* ⑥b 使用者當初的原話：「如果力量 80，中職都只能 30 轟，是一件極其不合理的事情。」
      魔鷹在日職是單季最多 13 轟的角色球員，到中職就打出 30 轟拿全壘打王；
-     一個滿檔的砲手在中職應該遠遠超過他。 */
-  assert.ok(r.CPBL1.top.HR>=45,'中職滿檔砲應該遠超過 30 支：'+r.CPBL1.top.HR);
+     一個滿檔的砲手在中職應該遠遠超過他。門檻從 45 降到 38：加上單季天花板之後，
+     力量 80 在中職的中位是 42 轟（中職紀錄是 39 轟／高國輝 2015），仍然遠超過 30。 */
+  assert.ok(r.CPBL1.top.HR>=38,'中職滿檔砲應該遠超過 30 支：'+r.CPBL1.top.HR);
+
+  /* ⑥c 單季的物理天花板。滿檔球員要逼近它但不可以越過——這是「破百轟」那份
+     回報的回歸測試。天花板照各聯盟的真實單季紀錄 ×1.15 訂（中職 39→45、
+     日職 60→69、大聯盟 73→84），打擊率 ×1.06。 */
+  for(const lv of L){
+    const x=r[lv];
+    assert.ok(x.top.hrRate<x.cap.hrRate,
+      `${lv} 滿檔砲的全壘打率越過了單季天花板：${x.top.hrRate} vs ${x.cap.hrRate}`);
+    assert.ok(x.top.hrRate>x.cap.hrRate*0.60,
+      `${lv} 天花板把滿檔砲壓得太低，應該要逼近它：${x.top.hrRate} vs ${x.cap.hrRate}`);
+    assert.ok(x.top.avg<x.cap.avg,
+      `${lv} 滿檔打者的打擊率越過了單季天花板：${x.top.avg} vs ${x.cap.avg}`);
+    /* 一般球員（聯盟水準）完全不該感覺到天花板的存在。 */
+    assert.ok(x.par.avg<x.cap.avg*0.85,
+      `${lv} 聯盟水準的打者離天花板太近，softCap 壓到了不該壓的人：${x.par.avg}`);
+  }
 
   /* ⑦ 中職是高打擊率、低長打的聯盟（真實：.259／1.59%），日職與大聯盟打擊率一樣低 */
   assert.ok(r.CPBL1.env.avg>r.NPB1.env.avg&&r.CPBL1.env.avg>r.MLB.env.avg,
