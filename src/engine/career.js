@@ -261,6 +261,10 @@ export function tierOf(bucket){
      不能各自去讀 TIER_TH[bucket][0] 的裸值(詳見 ui/retire.js 的說明)。 */
   return {i,sc:Math.round(sc),hofTh,name:LG_N[bucket]+['名人堂','明星球員','每日球員','邊緣球員','一頁過客'][i]};
 }
+/* 該側真的有出賽的年數。二刀流收斂成投手之後，打擊那一張如果照用 st.yr，
+   只打過 1 年的打擊履歷會印成 17 年——玩家回報的就是這個。
+   yrP／yrB 是 v2.0.6 才加的，舊欄位缺就退回 st.yr。 */
+export const yrsOf=(st,isP)=>{ const v=isP?st.yrP:st.yrB; return Number.isFinite(v)?v:(st.yr||0); };
 export function statTable(bucket,side){
   const st=S.stats[bucket]; if(!st)return '';
   let rows;
@@ -271,7 +275,7 @@ export function statTable(bucket,side){
     const era=st.IP>0?baseballERA(st).toFixed(2):'-';
     const whip=st.IP>0?baseballWHIP(st).toFixed(2):'-';
     rows=`<tr><th>Yrs</th><th>G</th><th>IP</th><th>W</th><th>L</th><th>SV</th><th>HLD</th><th>SO</th><th>BB</th><th>ERA</th><th>WHIP</th></tr>
-    <tr><td>${st.yr}</td><td>${pitG(st)}</td><td>${fmtIP(st.IP)}</td><td>${st.W}</td><td>${st.L}</td><td>${st.SV||0}</td><td>${st.HLD||0}</td><td>${st.SO}</td><td>${pitBB(st)}</td><td>${era}</td><td>${whip}</td></tr>`;
+    <tr><td>${yrsOf(st,true)}</td><td>${pitG(st)}</td><td>${fmtIP(st.IP)}</td><td>${st.W}</td><td>${st.L}</td><td>${st.SV||0}</td><td>${st.HLD||0}</td><td>${st.SO}</td><td>${pitBB(st)}</td><td>${era}</td><td>${whip}</td></tr>`;
   }else{
     const obpN = st.PA>0 ? (st.H+st.BB)/st.PA : 0;
     const slgN = slgOf(st);
@@ -280,7 +284,7 @@ export function statTable(bucket,side){
     const slg = st.AB>0 ? slgN.toFixed(3).replace(/^0/,'') : '-';
     const ops = st.AB>0 ? (obpN+slgN).toFixed(3).replace(/^0/,'') : '-';
     rows=`<tr><th>Yrs</th><th>G</th><th>PA</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th><th>H</th><th>HR</th><th>RBI</th><th>BB</th><th>SB</th><th>DEF</th></tr>
-    <tr><td>${st.yr}</td><td>${st.G}</td><td>${st.PA}</td><td>${avg}</td><td>${obp}</td><td>${slg}</td><td>${ops}</td><td>${st.H}</td><td>${st.HR}</td><td>${st.RBI}</td><td>${st.BB||0}</td><td>${st.SB}</td><td>${st.DEF>0?'+':''}${st.DEF||0}</td></tr>`;
+    <tr><td>${yrsOf(st,false)}</td><td>${st.G}</td><td>${st.PA}</td><td>${avg}</td><td>${obp}</td><td>${slg}</td><td>${ops}</td><td>${st.H}</td><td>${st.HR}</td><td>${st.RBI}</td><td>${st.BB||0}</td><td>${st.SB}</td><td>${st.DEF>0?'+':''}${st.DEF||0}</td></tr>`;
   }
   const asN=st.AS||0;
   const side名=side==='pit'?'・投球':side==='bat'?'・打擊':'';

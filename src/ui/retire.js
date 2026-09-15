@@ -11,7 +11,7 @@ import {roleN, fmtIP, slgOf, baseballERA, baseballWHIP, pitG, pitBB} from '../en
 import {fmtMoney} from '../engine/contract.js?v=2.0.6';
 import {isChampionshipYear, isProChampionshipYear} from '../engine/championship.js?v=2.0.6';
 import {capTeam, careerMilestones, honorGroups, honorSections, posLegendPhrase, primaryPos, statTable, tierOf, yearRanges, honorText,
-  twoWayView, twHasPit, twHasBat, statTables} from '../engine/career.js?v=2.0.6';
+  twoWayView, twHasPit, twHasBat, statTables, yrsOf} from '../engine/career.js?v=2.0.6';
 import {shareImageSheet} from './share-image.js?v=2.0.6';
 /* ================= 結算圖資料建構 =================
    Data builders for shareImage()'s canvas layout (design handoff 2026-08-14).
@@ -98,14 +98,14 @@ export function rpCumData(side){ /* per-league career totals; best-of-column mar
   const rows=order.map(b=>{ const st=S.stats[b];
     if(isP){
       /* 二刀流的登板數在 GP、投出的四死在 pBB——走 pitG()/pitBB() 才不會拿到打擊側的數字。 */
-      const era=baseballERA(st), whip=baseballWHIP(st), g=pitG(st), bb=pitBB(st);
-      return {b,txt:[st.yr,g,fmtIP(st.IP),st.W,st.L,st.SV||0,st.HLD||0,st.SO,bb,RP_F2(era),RP_F2(whip)],
-              num:[st.yr,g,st.IP,st.W,st.L,st.SV||0,st.HLD||0,st.SO,bb,era,whip]};
+      const era=baseballERA(st), whip=baseballWHIP(st), g=pitG(st), bb=pitBB(st), yrs=yrsOf(st,true);
+      return {b,txt:[yrs,g,fmtIP(st.IP),st.W,st.L,st.SV||0,st.HLD||0,st.SO,bb,RP_F2(era),RP_F2(whip)],
+              num:[yrs,g,st.IP,st.W,st.L,st.SV||0,st.HLD||0,st.SO,bb,era,whip]};
     }
     const obp=st.PA>0?(st.H+st.BB)/st.PA:null, slg=st.AB>0?slgOf(st):null,
-          avg=st.AB>0?st.H/st.AB:null, ops=(obp!=null&&slg!=null)?obp+slg:null;
-    return {b,txt:[st.yr,st.G,st.PA,RP_F3(avg),RP_F3(obp),RP_F3(slg),RP_F3(ops),st.H,st.HR,st.RBI,st.BB||0,st.SB,(st.DEF>0?'+':'')+(st.DEF||0)],
-            num:[st.yr,st.G,st.PA,avg,obp,slg,ops,st.H,st.HR,st.RBI,st.BB||0,st.SB,st.DEF||0]};
+          avg=st.AB>0?st.H/st.AB:null, ops=(obp!=null&&slg!=null)?obp+slg:null, yrs=yrsOf(st,false);
+    return {b,txt:[yrs,st.G,st.PA,RP_F3(avg),RP_F3(obp),RP_F3(slg),RP_F3(ops),st.H,st.HR,st.RBI,st.BB||0,st.SB,(st.DEF>0?'+':'')+(st.DEF||0)],
+            num:[yrs,st.G,st.PA,avg,obp,slg,ops,st.H,st.HR,st.RBI,st.BB||0,st.SB,st.DEF||0]};
   });
   /* Yrs never marked; pitcher L/BB "best" is meaningless; ERA/WHIP take the minimum */
   const minCols=isP?{9:1,10:1}:{}, skip=isP?{0:1,4:1,8:1}:{0:1}, best={};

@@ -480,13 +480,31 @@ export function accStat(bucket,st){
     S.dposYears[dp]=(S.dposYears[dp]||0)+1;
     if(!t.DPG)t.DPG={}; t.DPG[dp]=(t.DPG[dp]||0)+(st.G||0); }
   if((S.pos==='P'||S.pos==='TW')&&S.role){ S.roleYears[S.role]=(S.roleYears[S.role]||0)+1; }
-  if(Number.isFinite(st.GP))t.GP=(t.GP||0)+st.GP;
-  if(Number.isFinite(st.pH)){ t.pH=(t.pH||0)+st.pH; t.pBB=(t.pBB||0)+(st.pBB||0); }
-  if(Number.isFinite(st.pHR))t.pHR=(t.pHR||0)+st.pHR;
   if(S.pos==='TW')S.twSeasons=(S.twSeasons||0)+1;   /* 真的以二刀流身分打完的球季數 */
-  ['G','PA','AB','H','HR','RBI','SB','BB','W','L','SV','HLD','SO','ER'].forEach(k=>t[k]+=(st[k]||0));
-  t.DEF+=(st.DEF||0);
-  t.IP=ipFromOuts(outsFromIP(t.IP)+outsFromIP(st.IP));
+  /* 投打兩側分開累積。舊版是一行 forEach 把 G／H／BB 全部加進同一格，
+     只有二刀流的球季才另外寫 GP／pH／pBB——於是「先二刀流、後被收斂成投手」的生涯，
+     t.G 會等於（二刀流那幾年的打擊出賽 ＋ 之後所有年的登板數）、
+     t.H 等於（安打 ＋ 被安打）、t.BB 等於（保送 ＋ 投出的四死），
+     而 pitG()／pitBB() 只讀得到二刀流那幾年。玩家回報的
+     「打擊只打 3 年卻寫 17 年、AVG 6.456、投手保送 37」全部出自這裡。
+     現在不管什麼身分，投球的數字一律進 GP／pH／pBB／pHR，打擊的一律進 G／H／BB／HR。
+     單季的 st 仍然維持原本的欄位規則（單刀投手寫 st.G／st.H／st.BB），
+     所以這裡用 pitG()／pitH()／pitBB() 把它讀出來，不改動任何產生成績的程式碼。 */
+  const pitSide=(S.pos==='P'||S.pos==='TW'), batSide=(S.pos!=='P');
+  if(pitSide){
+    t.GP=(t.GP||0)+pitG(st);
+    t.pH=(t.pH||0)+pitH(st);
+    t.pBB=(t.pBB||0)+pitBB(st);
+    t.pHR=(t.pHR||0)+(st.pHR||0);
+    ['W','L','SV','HLD','SO','ER'].forEach(k=>t[k]+=(st[k]||0));
+    t.IP=ipFromOuts(outsFromIP(t.IP)+outsFromIP(st.IP));
+    if((st.IP||0)>0||pitG(st)>0)t.yrP=(t.yrP||0)+1;
+  }
+  if(batSide){
+    ['G','PA','AB','H','HR','RBI','SB','BB'].forEach(k=>t[k]+=(st[k]||0));
+    t.DEF+=(st.DEF||0);
+    if((st.PA||0)>0||(st.G||0)>0)t.yrB=(t.yrB||0)+1;
+  }
 }
 /* 二刀流的球季數據卡：投打各一行。比單刀的 statLine() 精簡，因為一張卡要放兩行——
    投球側省掉保送與 WHIP、打擊側省掉上壘率與長打率（OPS 已經含了這兩項）。

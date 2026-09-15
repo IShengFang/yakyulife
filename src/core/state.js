@@ -52,7 +52,13 @@ export function newState(name,jersey,pos,role){
     stats:{CPBL:null,NPB:null,MLB:null,MINOR:null},contracts:[],honors:[],legendLeagues:[],rainbowLeagues:[],pitcherTCLeagues:[],hitterTCLeagues:[],nitenichiLeagues:[],intlCount:0,intlLock:null,intlStat:{G:0,PA:0,AB:0,H:0,HR:0,RBI:0,BB:0,IP:0,SO:0,ER:0,W:0,SV:0},intlLog:[],intlBest:null,dpos:pos==='TW'?'DH':null,dposYears:{},roleYears:{},tradeRefuse:0,champThisTeam:false,svc:0,svcOrg:null,faElig:false,tradeHeat:0,complainCount:0,demotionRefused:false,tj:0,tjCount:0,tjCrises:0,effort:'普通',tjSuccess:0,lastLv:null,twAuditLv:null,love:{st:'single',partner:null,kids:0,caught:0,affairs:0,exes:[],dyrs:0,datedTimes:0},traits2:{},log:[],ct:null,done:false};
 }
 export function playerName(){ return `${S.name} #${S.jersey}`; }
-export function blankStat(){return {yr:0,G:0,PA:0,AB:0,H:0,HR:0,RBI:0,SB:0,BB:0,W:0,L:0,SV:0,HLD:0,IP:0,SO:0,ER:0,AS:0,DEF:0,DPG:{}};}
+/* 生涯累積器。投球側一律走 GP／pH／pBB／pHR，打擊側走 G／H／BB／HR——
+   兩側從此不共用任何欄位。舊版只有二刀流的球季會寫 GP／pH／pBB，單刀投手的
+   登板數與被安打是寫進 G／H／BB 的，跟打者共用同一格；一段「先二刀流、後收斂成
+   投手」的生涯於是會把兩邊加在一起（G＝打擊出賽＋登板數、H＝安打＋被安打），
+   而 pitG()／pitBB() 又只讀得到二刀流那幾年。見 accStat()。
+   yr 是總球季數（新人王與代表聯盟要用），yrP／yrB 是各側真的有出賽的年數。 */
+export function blankStat(){return {yr:0,yrP:0,yrB:0,G:0,GP:0,PA:0,AB:0,H:0,pH:0,HR:0,pHR:0,RBI:0,SB:0,BB:0,pBB:0,W:0,L:0,SV:0,HLD:0,IP:0,SO:0,ER:0,AS:0,DEF:0,DPG:{}};}
 export function bucketOf(lv){ const l=lv&&LV[lv]; return l&&l.top?l.top:'MINOR'; } /* 業餘引退時 lv 為空,歸類 MINOR */
 export function nextStep(){ if(S.done){ stepQ=[]; return; } /* 已引退:清空後續步驟,不再跑續約/結算 */ const f=stepQ.shift(); if(f)f(); }
 export function stageLabel(){
