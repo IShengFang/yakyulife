@@ -17,10 +17,10 @@ try{
 
   /* ── ① 模組層：資料形狀、成本曲線、ovr、事件卡資格 ── */
   const unit=await page.evaluate(async()=>{
-    const state=await import('./src/core/state.js?v=2.0.5');
-    const ability=await import('./src/engine/ability.js?v=2.0.5');
-    const events=await import('./src/flow/events.js?v=2.0.5');
-    const {POS_AB,POSN}=await import('./src/data/abilities.js?v=2.0.5');
+    const state=await import('./src/core/state.js?v=2.0.6');
+    const ability=await import('./src/engine/ability.js?v=2.0.6');
+    const events=await import('./src/flow/events.js?v=2.0.6');
+    const {POS_AB,POSN}=await import('./src/data/abilities.js?v=2.0.6');
 
     /* 成本曲線由「依守位」改成「依能力鍵」，對投手與野手必須是恆等變換。 */
     const oldCost=(pos,k,cur,pk)=>{ const isP=pos==='P';
@@ -87,7 +87,7 @@ try{
   const page2=await browser.newPage();
   page2.on('pageerror',error=>errors.push(error.message));
   await page2.goto(`${url}?seed=twoway-walk`,{waitUntil:'domcontentloaded'});
-  /* v2.0.5 起二刀流就是守位列的第五顆按鈕，跟其他四個互斥。
+  /* v2.0.6 起二刀流就是守位列的第五顆按鈕，跟其他四個互斥。
      七下捷徑保留，它現在等於「幫你按下第五顆」。 */
   const before=await page2.evaluate(()=>({
     labels:[...document.querySelectorAll('#seg-pos button')].map(e=>e.textContent.trim()),
@@ -113,8 +113,8 @@ try{
   await page2.click('#btn-start');
 
   const walk=await page2.evaluate(async()=>{
-    const state=await import('./src/core/state.js?v=2.0.5');
-    const {TW_SIX_GUARANTEED}=await import('./src/flow/phases.js?v=2.0.5');
+    const state=await import('./src/core/state.js?v=2.0.6');
+    const {TW_SIX_GUARANTEED}=await import('./src/flow/phases.js?v=2.0.6');
     const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     const vis=x=>x&&x.offsetParent!==null&&!x.disabled;
     const S=state.S, years=[]; let seen=null, dice=[];

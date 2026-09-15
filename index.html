@@ -35,7 +35,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/bold/style.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
-<link rel="stylesheet" href="css/style.css?v=2.0.5-ui-complete">
+<link rel="stylesheet" href="css/style.css?v=2.0.6-ui-complete">
 </head>
 <body>
 <div id="start">
@@ -57,7 +57,8 @@
       </div>
       <div class="field"><label>守位</label>
         <!-- 二刀流就當第五個守位放在同一排。它跟其他四個互斥，行為本來就一樣，
-             只是多一條金色底線標示它是特殊的那一個。說明只在選中時出現一行。 -->
+             只用強調色的字與外框標示它是特殊的那一個（底線在報紙主題會被方框吃掉）。
+             說明只在選中時出現一行。 -->
         <div class="seg seg-pos5" id="seg-pos">
           <button data-v="P" class="on">投手</button><button data-v="C">捕手</button>
           <button data-v="IF">內野手</button><button data-v="OF">外野手</button>
@@ -100,7 +101,7 @@
       </details>
       <div id="community"><a href="https://discord.gg/UnDYxFtz4U" target="_blank" rel="noopener noreferrer"><i class="ph-fill ph-chat-circle-dots" aria-hidden="true"></i>加入 Discord</a></div>
     </div>
-    <div class="start-meta">Produced by <a href="https://www.threads.com/@mr.themost" target="_blank" rel="noopener">最先生 Mr.TheMost</a><span id="ver-badge">v2.0.5</span></div>
+    <div class="start-meta">Produced by <a href="https://www.threads.com/@mr.themost" target="_blank" rel="noopener">最先生 Mr.TheMost</a><span id="ver-badge">v2.0.6</span></div>
   </footer>
 </div>
 <div id="app">
@@ -154,6 +155,6 @@
 <div id="alloc-full"><div id="af-inner"><div class="af-head"><span class="af-title" id="af-title"></span><button class="btn" id="af-close">收起</button></div><div id="af-body"></div></div></div>
 <!-- GitHub Pages sits behind a long-lived CDN cache. The entry point and every
      relative import carry this release token so browsers cannot mix versions. -->
-<script type="module" src="src/main.js?v=2.0.5-ui-complete"></script>
+<script type="module" src="src/main.js?v=2.0.6-ui-complete"></script>
 </body>
 </html>

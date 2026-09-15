@@ -1,6 +1,6 @@
-import {R, ri} from './rng.js?v=2.0.5';
-import {POS_AB} from '../data/abilities.js?v=2.0.5';
-import {LV} from '../data/teams.js?v=2.0.5';
+import {R, ri} from './rng.js?v=2.0.6';
+import {POS_AB} from '../data/abilities.js?v=2.0.6';
+import {LV} from '../data/teams.js?v=2.0.6';
 
 /* ================= 遊戲狀態 ================= */
 export let S=null, stepQ=[];
@@ -49,7 +49,7 @@ export function newState(name,jersey,pos,role){
     teamSeasons:0,teamYears:0,teamStarYears:0,franchiseActive:false,franchiseTeamName:null,
     six:0,bigInj:0,glassYear:null,ironStreak:0,npbYears:0,
     injNext:0,tmpInj:0,rehab:0,marketInjury:'healthy',salary:0,outsideIncome:0,yearOutsideIncome:0,pool:0,pendStat:0,seasonFactor:1,
-    stats:{CPBL:null,NPB:null,MLB:null,MINOR:null},contracts:[],honors:[],legendLeagues:[],rainbowLeagues:[],pitcherTCLeagues:[],hitterTCLeagues:[],nitenichiLeagues:[],intlCount:0,intlLock:null,intlStat:{G:0,PA:0,AB:0,H:0,HR:0,RBI:0,BB:0,IP:0,SO:0,ER:0,W:0,SV:0},intlLog:[],intlBest:null,dpos:pos==='TW'?'DH':null,dposYears:{},roleYears:{},tradeRefuse:0,champThisTeam:false,svc:0,svcOrg:null,faElig:false,tradeHeat:0,complainCount:0,demotionRefused:false,tj:0,tjCount:0,tjCrises:0,effort:'普通',tjSuccess:0,lastLv:null,love:{st:'single',partner:null,kids:0,caught:0,affairs:0,exes:[],dyrs:0,datedTimes:0},traits2:{},log:[],ct:null,done:false};
+    stats:{CPBL:null,NPB:null,MLB:null,MINOR:null},contracts:[],honors:[],legendLeagues:[],rainbowLeagues:[],pitcherTCLeagues:[],hitterTCLeagues:[],nitenichiLeagues:[],intlCount:0,intlLock:null,intlStat:{G:0,PA:0,AB:0,H:0,HR:0,RBI:0,BB:0,IP:0,SO:0,ER:0,W:0,SV:0},intlLog:[],intlBest:null,dpos:pos==='TW'?'DH':null,dposYears:{},roleYears:{},tradeRefuse:0,champThisTeam:false,svc:0,svcOrg:null,faElig:false,tradeHeat:0,complainCount:0,demotionRefused:false,tj:0,tjCount:0,tjCrises:0,effort:'普通',tjSuccess:0,lastLv:null,twAuditLv:null,love:{st:'single',partner:null,kids:0,caught:0,affairs:0,exes:[],dyrs:0,datedTimes:0},traits2:{},log:[],ct:null,done:false};
 }
 export function playerName(){ return `${S.name} #${S.jersey}`; }
 export function blankStat(){return {yr:0,G:0,PA:0,AB:0,H:0,HR:0,RBI:0,SB:0,BB:0,W:0,L:0,SV:0,HLD:0,IP:0,SO:0,ER:0,AS:0,DEF:0,DPG:{}};}

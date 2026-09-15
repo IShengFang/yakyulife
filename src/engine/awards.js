@@ -1,13 +1,13 @@
-import {S} from '../core/state.js?v=2.0.5';
-import {chance, clamp} from '../core/rng.js?v=2.0.5';
-import {DPN, GLOVE_TH, GLOVE_K} from '../data/abilities.js?v=2.0.5';
-import {LV} from '../data/teams.js?v=2.0.5';
-import {AWARD_TH, starTh} from '../data/thresholds.js?v=2.0.5';
-import {card} from '../ui/dom.js?v=2.0.5';
-import {tlNote} from '../ui/timeline.js?v=2.0.5';
-import {isSP, slgOf, baseballERA, pitG} from './season.js?v=2.0.5';
-import {isCareerScoringAward, splitBySide} from './award-rules.js?v=2.0.5';
-import {traitCard, removeTrait} from '../flow/events.js?v=2.0.5';
+import {S} from '../core/state.js?v=2.0.6';
+import {chance, clamp} from '../core/rng.js?v=2.0.6';
+import {DPN, GLOVE_TH, GLOVE_K} from '../data/abilities.js?v=2.0.6';
+import {LV} from '../data/teams.js?v=2.0.6';
+import {AWARD_TH, starTh} from '../data/thresholds.js?v=2.0.6';
+import {card} from '../ui/dom.js?v=2.0.6';
+import {tlNote} from '../ui/timeline.js?v=2.0.6';
+import {isSP, slgOf, baseballERA, pitG} from './season.js?v=2.0.6';
+import {isCareerScoringAward, splitBySide} from './award-rules.js?v=2.0.6';
+import {traitCard, removeTrait} from '../flow/events.js?v=2.0.6';
 /* 獎項機率同時有硬下限與必得上限；數值越低越好的獎項（ERA）用 lower=true。 */
 export function awardP(value,hardLow,autoWin,base=25,lower=false){
   const ineligible=lower?value>hardLow:value<hardLow;

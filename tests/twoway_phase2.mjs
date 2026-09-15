@@ -16,10 +16,10 @@ try{
   await page.goto(`${url}?seed=twoway-phase2`,{waitUntil:'domcontentloaded'});
 
   const r=await page.evaluate(async()=>{
-    const state=await import('./src/core/state.js?v=2.0.5');
-    const season=await import('./src/engine/season.js?v=2.0.5');
-    const injury=await import('./src/engine/injury.js?v=2.0.5');
-    const phases=await import('./src/flow/phases.js?v=2.0.5');
+    const state=await import('./src/core/state.js?v=2.0.6');
+    const season=await import('./src/engine/season.js?v=2.0.6');
+    const injury=await import('./src/engine/injury.js?v=2.0.6');
+    const phases=await import('./src/flow/phases.js?v=2.0.6');
 
     const mk=(abv,over={})=>{
       const s=state.newState('二刀',1,'TW',null);
@@ -28,6 +28,9 @@ try{
       s.traits.genius=true; s.six=5;
       Object.assign(s.ab,{sta:62,vel:60,ctl:58,brk:59,con:60,pow:58,spd:50,eye:56},abv||{});
       s.teamName=function(){return this.orgTeam||'';};
+      /* 這一組測試量的是「門檻本身」，不是升級緩衝。補上 twAuditLv＝當前層級，
+         代表他已經在這個層級站過一季，audit 才會直接用這個層級的尺。 */
+      if(s.twAuditLv==null)s.twAuditLv=s.lv;
       state.setS(s); return s;
     };
 
@@ -62,7 +65,7 @@ try{
     const rehab=(()=>{ const x=season.simSeason('CPBL1');
       return {GP:x.GP,IP:x.IP,G:x.G,PA:x.PA,d:x.d,noPitD:!Number.isFinite(x.dPit)}; })();
 
-    /* ⑤ 強制轉回：門檻是該層級 min − 10（中職一軍 41 → 31）。 */
+    /* ⑤ 強制轉回：門檻是該層級 min − TW_BAR（中職一軍 41 → 40.5）。 */
     const audit={};
     const snap=s=>({fired:s.__fired,pos:s.pos,role:s.role,dpos:s.dpos,
       genius:s.traits.genius,six:s.six,removed:s.removed.slice(),
@@ -73,7 +76,7 @@ try{
     s=mk({sta:55,vel:18,ctl:18,brk:18,con:60,pow:58,spd:50,eye:55}); s.__fired=phases.twoWayAudit(); audit.pitDead=snap(s);
     s=mk({sta:55,vel:18,ctl:18,brk:18,con:60,pow:58,spd:50,eye:55},{twOrigin:'genius'});
     s.__fired=phases.twoWayAudit(); audit.organic=snap(s);
-    /* 同一組能力在大聯盟門檻更嚴（min 56 → 46）。 */
+    /* 同一組能力在大聯盟門檻更嚴（min 56 → 55.5）。 */
     s=mk({sta:50,vel:50,ctl:48,brk:48,con:50,pow:48,spd:42,eye:45},{lv:'CPBL1'});
     s.__fired=phases.twoWayAudit(); audit.cpbl=snap(s);
     s=mk({sta:50,vel:50,ctl:48,brk:48,con:50,pow:48,spd:42,eye:45},{lv:'MLB',org:'MiLB'});

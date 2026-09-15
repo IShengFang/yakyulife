@@ -1,22 +1,22 @@
-import {S, stepQ, nextStep, stageLabel} from '../core/state.js?v=2.0.5';
-import {R, ri, chance, clamp} from '../core/rng.js?v=2.0.5';
-import {ABL, POS_AB} from '../data/abilities.js?v=2.0.5';
-import {LV, PATHS, teamNick} from '../data/teams.js?v=2.0.5';
-import {keepTh} from '../data/thresholds.js?v=2.0.5';
-import {AMA_ANNUAL} from '../data/economy.js?v=2.0.5';
-import {card, choose, board, divider} from '../ui/dom.js?v=2.0.5';
-import {tlNote, tlPush, tlRestage} from '../ui/timeline.js?v=2.0.5';
-import {allocUI} from '../ui/alloc.js?v=2.0.5';
-import {addAb, ovr, ovrPit, ovrBat, dposReview, statBonusTxt} from '../engine/ability.js?v=2.0.5';
-import {rollInjury, tjCap, tjEffortMult} from '../engine/injury.js?v=2.0.5';
-import {isMrTeamEligible} from '../engine/tenure.js?v=2.0.5';
-import {amateurSeason, proSeason, slgOf, currentSalaryRating, baseballERA, baseballWHIP, seasonGrade} from '../engine/season.js?v=2.0.5';
-import {championshipChance} from '../engine/championship.js?v=2.0.5';
-import {buyoutRemaining, contractAnnual, contractMarketProfile, controlledAnnual, crossOffers, daibaFarewell, extensionOffer, faFlow, fmtMoney, handleDemotion, levelMinAnnual, makeContract, makeOffers, offseasonTradeCheck, pickOfferUI, returnHomeSign, signTo, teamChampRate} from '../engine/contract.js?v=2.0.5';
-import {drawEvents, removeTrait, checkChampionTrait} from './events.js?v=2.0.5';
-import {loveEvent} from './love.js?v=2.0.5';
-import {runDraft, pathChoiceHS, pathChoiceU4, advance} from '../engine/draft.js?v=2.0.5';
-import {endGame} from '../ui/retire.js?v=2.0.5';
+import {S, stepQ, nextStep, stageLabel} from '../core/state.js?v=2.0.6';
+import {R, ri, chance, clamp} from '../core/rng.js?v=2.0.6';
+import {ABL, POS_AB} from '../data/abilities.js?v=2.0.6';
+import {LV, PATHS, teamNick} from '../data/teams.js?v=2.0.6';
+import {keepTh} from '../data/thresholds.js?v=2.0.6';
+import {AMA_ANNUAL} from '../data/economy.js?v=2.0.6';
+import {card, choose, board, divider} from '../ui/dom.js?v=2.0.6';
+import {tlNote, tlPush, tlRestage} from '../ui/timeline.js?v=2.0.6';
+import {allocUI} from '../ui/alloc.js?v=2.0.6';
+import {addAb, ovr, ovrPit, ovrBat, dposReview, statBonusTxt} from '../engine/ability.js?v=2.0.6';
+import {rollInjury, tjCap, tjEffortMult} from '../engine/injury.js?v=2.0.6';
+import {isMrTeamEligible} from '../engine/tenure.js?v=2.0.6';
+import {amateurSeason, proSeason, slgOf, currentSalaryRating, baseballERA, baseballWHIP, seasonGrade} from '../engine/season.js?v=2.0.6';
+import {championshipChance} from '../engine/championship.js?v=2.0.6';
+import {buyoutRemaining, contractAnnual, contractMarketProfile, controlledAnnual, crossOffers, daibaFarewell, extensionOffer, faFlow, fmtMoney, handleDemotion, levelMinAnnual, makeContract, makeOffers, offseasonTradeCheck, pickOfferUI, returnHomeSign, signTo, teamChampRate} from '../engine/contract.js?v=2.0.6';
+import {drawEvents, removeTrait, checkChampionTrait} from './events.js?v=2.0.6';
+import {loveEvent} from './love.js?v=2.0.6';
+import {runDraft, pathChoiceHS, pathChoiceU4, advance} from '../engine/draft.js?v=2.0.6';
+import {endGame} from '../ui/retire.js?v=2.0.6';
 /* ================= 年度流程 ================= */
 export function startYear(){ S.yearOutsideIncome=0; stepQ.length=0; stepQ.push(phasePre,phaseMid,phaseEnd); divider(`${S.year} 年 · ${S.age} 歲 · ${stageLabel()}`); tlPush(); nextStep(); }
 /* 七下保送幾顆「6」。天才需要 5 顆，保送不足的部分要玩家自己擲出來。
@@ -61,37 +61,68 @@ export function convertToTwoWay(origin){
      過半的人抽到 ri(44,54) 或 ri(46,62)——照原值轉過來的話，這個邀請對他們是陷阱。
      所以轉入時把體力潛力墊到二刀流自己的下限。 */
   S.pot.sta=Math.max(S.pot.sta||0,ri(60,74));
-  S.pos='TW'; S.twOrigin=origin||'genius'; S.role=null; S.dpos='DH'; S.twSeasons=0;
+  S.pos='TW'; S.twOrigin=origin||'genius'; S.role=null; S.dpos='DH'; S.twSeasons=0; S.twAuditLv=null;
   return {gainedPit,gainedBat};
 }
 /* ---------- 二刀流資格檢查 ----------
-   任一側的 ovr 低於「該層級 min − 10」就強制收斂成較好的那一側。門檻隨層級自動變嚴
-   (中職一軍 31／日職一軍 40／大聯盟 46)，升上去了就得兩邊一起跟上。
-   投在放棄那一側的能力點不退還——那是二刀流的沉沒成本，也是這條路線的風險。
-   見 docs/twoway-design.md 決議 5／7／14。 */
+   任一側跟不上該層級就強制收斂成較好的那一側。投在放棄那一側的能力點不退還——
+   那是二刀流的沉沒成本，也是這條路線的風險。見 docs/twoway-design.md 決議 5／7／14。
+
+   ── 收斂門檻 TW_BAR ──
+   門檻是「弱側的 ovr 低於該層級 min − TW_BAR」。歷史沿革：
+     v2.0.1 以前 min−10：實測只有 0.3% 在衰退前被收斂——弱側中位數是 min+5.8，
+       那條線根本碰不到，95% 的人是 38~39 歲被衰退砍下去才崩的。那不是失敗，是老了。
+     v2.0.2 改 min−3 → 15.3%，但當時是「每年、用當前層級、只看能力值」判定，
+       實測中位只打 1 個二刀流球季就被砍，而且 74.8% 崩在剛升上日職一軍那一年。
+     v2.0.6 加上升級緩衝與成績豁免（見下），同一條 min−3 掉到 2.9%，
+       所以門檻要往回收才能維持原本的失敗率。實測曲線（N=2,500，衰退前被收斂）：
+         min−3 2.9% ／ min−2 5.8% ／ min−1 10.9%
+         min−0.5 14.9% ← 現在（舊版同樣本數 15.4%，等於沒動）
+         min−0.3 17.0% ／ min−0 19.8% ／ min+1 34.1% ／ min+2 51.9%
+   min−0.5 的語意也剛好：站穩一季之後，弱側要能自己達到該層級的最低水準。
+
+   ── 為什麼不能拿新層級的尺去量剛升上來的人 ──
+   玩家回報：2A 打出 .304／42 轟／OPS 1.023、投出 ERA 2.52／WHIP 1.01，
+   隔年直接跳上大聯盟，季初立刻被判「打擊跟不上大聯盟」。
+   2A 的門檻是 47、大聯盟是 56，一個休賽季跳了 9 點，而他在大聯盟還沒打過一球——
+   卡片寫「球團把數據攤在你面前」，那個當下根本沒有大聯盟的數據可以攤。
+
+   所以判定一律用「他真的打過的那個層級」的尺：
+     ① 這個休賽季升級了 → 這一季沿用舊層級的門檻。
+        在舊層級站得住 → 不收斂，讓他上去打一季再說（緩衝一季）；
+        舊層級就已經站不住 → 現在就收斂，那不是被拉上去，是本來就跟不上。
+     ② 站穩一季之後，才改用新層級的門檻。
+     ③ 成績豁免：上一季弱側真的打出該層級的水準，就不看能力值。
+        數據講話優先於能力值講話——這是玩家回報那一局該有的待遇。 */
+export const TW_BAR=0.5;
+/* 成績豁免的門檻換算到 st.dPit／st.dBat 的座標系。
+   d 是「該季實力 − 該層級 par」，能力門檻是「min − TW_BAR」，
+   所以同一條線在 d 空間就是 (min − par) − TW_BAR（各層級 min−par 約 −2～−3）。
+   d 含當季狀態火燙／低潮的 ±4，所以這是「成績」而不是「能力」的判定。 */
+function perfBarOf(L){ return (L.min-L.par)-TW_BAR; }
+/* 上一季弱側的實際成績夠不夠格留在那個層級。傷缺季／復健年沒有該側的 d，回 false
+   （沒有數據就不給豁免，退回能力值判定），不要把 undefined 當成通過。 */
+function twPerfPass(keepPit){
+  const st=S.lastSt, LL=LV[S.lastLv||S.lv];
+  if(!st||!LL||!Number.isFinite(LL.min))return false;
+  const dv=keepPit?st.dBat:st.dPit;         /* 被質疑的是弱側，也就是沒被留下的那一邊 */
+  if(!Number.isFinite(dv))return false;
+  return dv>=perfBarOf(LL);
+}
 export function twoWayAudit(){
   if(S.pos!=='TW'||S.stage!=='PRO')return false;
   const L=LV[S.lv]; if(!L||!Number.isFinite(L.min))return false;
-  /* 收斂門檻。原本是 min−10，實測 1,980 段生涯只有 0.3% 在衰退前被收斂——
-     弱側的中位數是 min+5.8，−10 那條線根本碰不到，95% 的人是在 38~39 歲
-     被衰退砍下去才崩的。那不是「二刀流失敗」，那是老了。
-     結果就是兩篇失敗結局幾乎永遠抽不到。
-
-     改成 min−3。實測曲線（衰退前就被收斂的生涯比例）：
-       min−10  0.3%   ← 原本
-       min−5   2.9%
-       min−4   5.9%
-       min−3  15.3%   ← 現在
-       min−2  32.6%
-       min−0  76.4%   ← 弱側單獨要能站穩該層級，等於宣告二刀流不可行
-     曲線在 −3 到 0 之間非常陡，所以這個數字不能隨便動。
-
-     失敗集中在 21~23 歲、剛升上一軍那幾年（79% 崩在日職一軍）：強側把他拉上去了，
-     弱側跟不上新層級的水準。那正是二刀流該失敗的樣子，也對得上失敗結局裡的
-     「你試了四年」。 */
-  const bar=L.min-3, p=ovrPit(), b=ovrBat();
+  /* 第一次以二刀流站上職業（或中途轉入二刀流）的那一季沒有任何可以量的數據，
+     記下層級就放行。同一條原則：不拿沒打過的層級去判一個人。 */
+  if(!S.twAuditLv){ S.twAuditLv=S.lv; return false; }
+  /* 上一次判定時人在哪個層級。跟現在不同而且現在比較高 → 這個休賽季升上來了。 */
+  const seen=LV[S.twAuditLv]||L, promoted=seen.min<L.min;
+  const J=promoted?seen:L;                  /* 這一季要用哪一把尺 */
+  S.twAuditLv=S.lv;                         /* 記下來，下一季就用新層級的尺 */
+  const bar=J.min-TW_BAR, p=ovrPit(), b=ovrBat();
   if(p>=bar&&b>=bar)return false;
   const keepPit=p>=b;
+  if(twPerfPass(keepPit))return false;      /* 成績豁免：弱側上一季真的打出水準 */
   const lost=keepPit?'打擊':'投球';
   S.twFellAge=S.age; S.twFellLv=S.lv;
   S.pos=keepPit?'P':'OF';
@@ -106,7 +137,7 @@ export function twoWayAudit(){
     S.dpos='DH';
   }
   card('bad','二刀流終止',
-    `球團把數據攤在你面前:你的${lost}已經跟不上<b class="dn">${L.n}</b>的水準了。`+
+    `球團把數據攤在你面前:你的${lost}已經跟不上<b class="dn">${J.n}</b>的水準了。`+
     `再撐下去只是兩頭落空——從今天起，你專心當一個<b class="hl">${keepPit?'投手':'打者'}</b>。`+
     `<br>那些年投進${lost}的訓練，沒有人會還給你。`);
   /* 七下路線的天才是系統送的，失去二刀流身分就一併收回;自己擲出五顆 6 的不拔。
