@@ -1,22 +1,22 @@
-import {S, stepQ, nextStep, stageLabel} from '../core/state.js?v=2.0.7';
-import {R, ri, chance, clamp} from '../core/rng.js?v=2.0.7';
-import {ABL, POS_AB} from '../data/abilities.js?v=2.0.7';
-import {LV, PATHS, teamNick} from '../data/teams.js?v=2.0.7';
-import {keepTh} from '../data/thresholds.js?v=2.0.7';
-import {AMA_ANNUAL} from '../data/economy.js?v=2.0.7';
-import {card, choose, board, divider} from '../ui/dom.js?v=2.0.7';
-import {tlNote, tlPush, tlRestage} from '../ui/timeline.js?v=2.0.7';
-import {allocUI} from '../ui/alloc.js?v=2.0.7';
-import {addAb, ovr, ovrPit, ovrBat, dposReview, statBonusTxt} from '../engine/ability.js?v=2.0.7';
-import {rollInjury, tjCap, tjEffortMult} from '../engine/injury.js?v=2.0.7';
-import {isMrTeamEligible} from '../engine/tenure.js?v=2.0.7';
-import {amateurSeason, proSeason, slgOf, currentSalaryRating, baseballERA, baseballWHIP, seasonGrade} from '../engine/season.js?v=2.0.7';
-import {championshipChance} from '../engine/championship.js?v=2.0.7';
-import {buyoutRemaining, contractAnnual, fmtMoneyFx, contractMarketProfile, controlledAnnual, crossOffers, daibaFarewell, extensionOffer, faFlow, fmtMoney, handleDemotion, levelMinAnnual, makeContract, makeOffers, offseasonTradeCheck, pickOfferUI, returnHomeSign, signTo, teamChampRate} from '../engine/contract.js?v=2.0.7';
-import {drawEvents, removeTrait, checkChampionTrait} from './events.js?v=2.0.7';
-import {loveEvent} from './love.js?v=2.0.7';
-import {runDraft, pathChoiceHS, pathChoiceU4, advance} from '../engine/draft.js?v=2.0.7';
-import {endGame} from '../ui/retire.js?v=2.0.7';
+import {S, stepQ, nextStep, stageLabel} from '../core/state.js?v=2.0.8';
+import {R, ri, chance, clamp} from '../core/rng.js?v=2.0.8';
+import {ABL, POS_AB} from '../data/abilities.js?v=2.0.8';
+import {LV, PATHS, teamNick} from '../data/teams.js?v=2.0.8';
+import {keepTh} from '../data/thresholds.js?v=2.0.8';
+import {AMA_ANNUAL} from '../data/economy.js?v=2.0.8';
+import {card, choose, board, divider} from '../ui/dom.js?v=2.0.8';
+import {tlNote, tlPush, tlRestage} from '../ui/timeline.js?v=2.0.8';
+import {allocUI} from '../ui/alloc.js?v=2.0.8';
+import {addAb, ovr, ovrPit, ovrBat, dposReview, statBonusTxt} from '../engine/ability.js?v=2.0.8';
+import {rollInjury, tjCap, tjEffortMult} from '../engine/injury.js?v=2.0.8';
+import {isMrTeamEligible} from '../engine/tenure.js?v=2.0.8';
+import {amateurSeason, proSeason, slgOf, currentSalaryRating, baseballERA, baseballWHIP, seasonGrade} from '../engine/season.js?v=2.0.8';
+import {championshipChance} from '../engine/championship.js?v=2.0.8';
+import {buyoutRemaining, contractAnnual, fmtMoneyFx, contractMarketProfile, controlledAnnual, crossOffers, daibaFarewell, extensionOffer, faFlow, fmtMoney, handleDemotion, levelMinAnnual, makeContract, makeOffers, offseasonTradeCheck, pickOfferUI, returnHomeSign, signTo, teamChampRate} from '../engine/contract.js?v=2.0.8';
+import {drawEvents, removeTrait, checkChampionTrait} from './events.js?v=2.0.8';
+import {loveEvent} from './love.js?v=2.0.8';
+import {runDraft, pathChoiceHS, pathChoiceU4, advance} from '../engine/draft.js?v=2.0.8';
+import {endGame} from '../ui/retire.js?v=2.0.8';
 /* ================= 年度流程 ================= */
 export function startYear(){ S.yearOutsideIncome=0; stepQ.length=0; stepQ.push(phasePre,phaseMid,phaseEnd); divider(`${S.year} 年 · ${S.age} 歲 · ${stageLabel()}`); tlPush(); nextStep(); }
 /* 七下保送幾顆「6」。天才需要 5 顆，保送不足的部分要玩家自己擲出來。
@@ -74,7 +74,7 @@ export function convertToTwoWay(origin){
        那條線根本碰不到，95% 的人是 38~39 歲被衰退砍下去才崩的。那不是失敗，是老了。
      v2.0.2 改 min−3 → 15.3%，但當時是「每年、用當前層級、只看能力值」判定，
        實測中位只打 1 個二刀流球季就被砍，而且 74.8% 崩在剛升上日職一軍那一年。
-     v2.0.7 加上升級緩衝與成績豁免（見下），同一條 min−3 掉到 2.9%，
+     v2.0.8 加上升級緩衝與成績豁免（見下），同一條 min−3 掉到 2.9%，
        所以門檻要往回收才能維持原本的失敗率。實測曲線（N=2,500，衰退前被收斂）：
          min−3 2.9% ／ min−2 5.8% ／ min−1 10.9%
          min−0.5 14.9% ← 現在（舊版同樣本數 15.4%，等於沒動）
