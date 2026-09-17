@@ -1,10 +1,10 @@
-import {S} from '../core/state.js?v=2.0.8';
-import {clamp} from '../core/rng.js?v=2.0.8';
-import {DPN, POSN, POS_ADJ_RUNS, POS_TIER_K, POS_TIER_STR} from '../data/abilities.js?v=2.0.8';
-import {LG_N, envOf, envWhip, envLeagueOps} from '../data/teams.js?v=2.0.8';
-import {TIER_TH, LEAGUE_K, MILESTONE_DEF, HOF_TH_K} from '../data/economy.js?v=2.0.8';
-import {fmtIP, slgOf, roleName3, baseballERA, baseballWHIP, pitG, pitBB} from './season.js?v=2.0.8';
-import {isCareerScoringAward, HONOR_GROUP_NAMES, honorSide, splitBySide} from './award-rules.js?v=2.0.8';
+import {S} from '../core/state.js?v=2.0.9';
+import {clamp} from '../core/rng.js?v=2.0.9';
+import {DPN, POSN, POS_ADJ_RUNS, POS_TIER_K, POS_TIER_STR} from '../data/abilities.js?v=2.0.9';
+import {LG_N, envOf, envWhip, envLeagueOps} from '../data/teams.js?v=2.0.9';
+import {TIER_TH, LEAGUE_K, MILESTONE_DEF, HOF_TH_K} from '../data/economy.js?v=2.0.9';
+import {fmtIP, slgOf, roleName3, baseballERA, baseballWHIP, pitG, pitBB} from './season.js?v=2.0.9';
+import {isCareerScoringAward, HONOR_GROUP_NAMES, honorSide, splitBySide} from './award-rules.js?v=2.0.9';
 export {HONOR_GROUP_NAMES, honorSide};
 /* ================= 生涯終章 ================= */
 const BUCKET_G={CPBL:120,NPB:143,MLB:162};
@@ -263,7 +263,7 @@ export function tierOf(bucket){
 }
 /* 該側真的有出賽的年數。二刀流收斂成投手之後，打擊那一張如果照用 st.yr，
    只打過 1 年的打擊履歷會印成 17 年——玩家回報的就是這個。
-   yrP／yrB 是 v2.0.8 才加的，舊欄位缺就退回 st.yr。 */
+   yrP／yrB 是 v2.0.7 才加的，舊欄位缺就退回 st.yr。 */
 export const yrsOf=(st,isP)=>{ const v=isP?st.yrP:st.yrB; return Number.isFinite(v)?v:(st.yr||0); };
 export function statTable(bucket,side){
   const st=S.stats[bucket]; if(!st)return '';
