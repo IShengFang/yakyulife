@@ -12,7 +12,7 @@ import {rollInjury, tjCap, tjEffortMult} from '../engine/injury.js?v=2.0.7';
 import {isMrTeamEligible} from '../engine/tenure.js?v=2.0.7';
 import {amateurSeason, proSeason, slgOf, currentSalaryRating, baseballERA, baseballWHIP, seasonGrade} from '../engine/season.js?v=2.0.7';
 import {championshipChance} from '../engine/championship.js?v=2.0.7';
-import {buyoutRemaining, contractAnnual, contractMarketProfile, controlledAnnual, crossOffers, daibaFarewell, extensionOffer, faFlow, fmtMoney, handleDemotion, levelMinAnnual, makeContract, makeOffers, offseasonTradeCheck, pickOfferUI, returnHomeSign, signTo, teamChampRate} from '../engine/contract.js?v=2.0.7';
+import {buyoutRemaining, contractAnnual, fmtMoneyFx, contractMarketProfile, controlledAnnual, crossOffers, daibaFarewell, extensionOffer, faFlow, fmtMoney, handleDemotion, levelMinAnnual, makeContract, makeOffers, offseasonTradeCheck, pickOfferUI, returnHomeSign, signTo, teamChampRate} from '../engine/contract.js?v=2.0.7';
 import {drawEvents, removeTrait, checkChampionTrait} from './events.js?v=2.0.7';
 import {loveEvent} from './love.js?v=2.0.7';
 import {runDraft, pathChoiceHS, pathChoiceU4, advance} from '../engine/draft.js?v=2.0.7';
@@ -485,7 +485,7 @@ export function finishContractYear(o){
       /* 菜鳥5年內:球團行使續約權,續短約,薪資不低於層級基數 */
       const renewalProfile=contractMarketProfile(S.lastD||0), renewalD=renewalProfile.rating, renewalAnnual=controlledAnnual(S.lv,renewalD,renewalProfile.aav);
       S.ct=makeContract(ri(1,2),1,S.lv,renewalD,renewalAnnual,{extOffered:false,controlled:true},'球團續約');
-      card('info','球團續約',`你仍在選秀球隊掌控期（服務 ${S.svc}/5 年），球團依服務年資與近年表現行使續約權——固定年薪 <b class="hl">${fmtMoney(S.ct.annual)}</b> × <b class="hl">${S.ct.yrs} 年</b>，合約總額 <b class="hl">${fmtMoney(S.ct.annual*S.ct.yrs)}</b>。`); board(1);
+      card('info','球團續約',`你仍在選秀球隊掌控期（服務 ${S.svc}/5 年），球團依服務年資與近年表現行使續約權——固定年薪 <b class="hl">${fmtMoneyFx(S.ct.annual)}</b> × <b class="hl">${S.ct.yrs} 年</b>，合約總額 <b class="hl">${fmtMoneyFx(S.ct.annual*S.ct.yrs)}</b>。`); board(1);
     } else { S.ct=makeContract(ri(1,2),1,S.lv,currentSalaryRating(S.lastD||0),undefined,null,'球團續約'); } /* 非頂級層級 */
   }
   /* 仍在海外養成層級時，每個球季結束都讓玩家重新決定是否返台。

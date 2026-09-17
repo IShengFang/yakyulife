@@ -45,6 +45,28 @@ export function salaryFor(lv,d){
   } return 0;
 }
 export const fmtMoney=w=>{ const y=Math.floor(w/10000),m=Math.round(w%10000); return (y?y+'億':'')+(m?m.toLocaleString()+'萬':(y?'':'0萬')); };
+/* ───────── 合約金額的外幣參考值 ─────────
+   薪資系統從頭到尾都是台幣「萬」，這裡只負責在括號裡多寫一個當地幣別的數字，
+   純顯示、不參與任何計算——旅日簽約看到「5 億日圓」比「2 億 4,200 萬台幣」有感。
+   匯率是寫死的常數，刻意不跟真實匯率連動：同一份合約隔天回頭看，數字不該變。
+   取臺灣銀行 2026-09-17 的即期賣出價：1 美元 = 31.98 台幣、1 日圓 = 0.2064 台幣。
+   幣別看層級的 org：MiLB（含 1A~3A 與大聯盟）記美元、NPB 記日圓、中職不加註。 */
+export const FX={MiLB:{rate:31.98,unit:'美元'},NPB:{rate:0.2064,unit:'日圓'}};
+export function fxNote(w,lv){
+  const f=FX[(LV[lv||S.lv]||{}).org];
+  if(!f||!(w>0))return '';
+  const v=w/f.rate;                       /* 換算後一樣以「萬」為單位 */
+  /* 日圓的數字很大，十五年約會來到四位數的「億」——那個量級再帶兩位小數只是雜訊，
+     所以破百億就取整數並加千分位（2,310億日圓），百億以下才留兩位（154.5億）。 */
+  const oku=v/10000;
+  const t=oku>=100?Math.round(oku).toLocaleString()+'億'
+         :oku>=1?(+oku.toFixed(2))+'億'
+         :v>=1?Math.round(v).toLocaleString()+'萬'
+         :(+v.toFixed(2))+'萬';
+  return `（約 ${t}${f.unit}）`;
+}
+/* 金額＋外幣註記。合約卡一律用這個，不要再直接串 fmtMoney。 */
+export const fmtMoneyFx=(w,lv)=>fmtMoney(w)+fxNote(w,lv);
 export function calcContractAnnual(lv,d,mult){
   return Math.round(Math.max(levelMinAnnual(lv),salaryFor(lv,d)*(mult||1)));
 }
@@ -369,7 +391,7 @@ export function signTo(org,lv,team,yrs,mult,annual,quiet){
   S.ct=makeContract(yrs||2,mult||1,lv,contractD,annual,null,'簽約');
   if(org!=='NPB')S.npbYears=0;
   /* quiet：呼叫端自己會寫一張更完整的卡（旅外回歸），這裡就不要再印一張制式簽約卡。 */
-  if(!quiet)card('info','簽約',`與 <b class="hl">${S.teamName()}</b> 簽下固定年薪 <b class="hl">${fmtMoney(S.ct.annual)}</b> × <b class="hl">${S.ct.yrs} 年</b>，合約薪資總額 <b class="hl">${fmtMoney(S.ct.annual*S.ct.yrs)}</b>。`);
+  if(!quiet)card('info','簽約',`與 <b class="hl">${S.teamName()}</b> 簽下固定年薪 <b class="hl">${fmtMoneyFx(S.ct.annual)}</b> × <b class="hl">${S.ct.yrs} 年</b>，合約薪資總額 <b class="hl">${fmtMoneyFx(S.ct.annual*S.ct.yrs)}</b>。`);
   board(2);
 }
 /* ---------- 旅外回歸：母隊優先 ---------- */
@@ -405,7 +427,7 @@ export function returnHomeSign(from,org,lv,intro,o){
   const dest=(o&&o.dest)||returnTeam(org), lg=LEAGUE_OF[org]||'', fromN=LEAGUE_OF[from]||'海外';
   if(intro)card('info','長考',intro);
   signTo(org,lv,dest.team,o&&o.yrs,o&&o.mult,o&&o.annual,true);
-  const ct=S.ct, detail=`固定年薪 <b class="hl">${fmtMoney(ct.annual)}</b> × <b class="hl">${ct.yrs} 年</b>（合約總額 <b class="hl">${fmtMoney(ct.annual*ct.yrs)}</b>）`;
+  const ct=S.ct, detail=`固定年薪 <b class="hl">${fmtMoneyFx(ct.annual)}</b> × <b class="hl">${ct.yrs} 年</b>（合約總額 <b class="hl">${fmtMoneyFx(ct.annual*ct.yrs)}</b>）`;
   const heroN=S.pos==='P'?'王牌':'第四棒';
   if(dest.back){
     card('gold','回歸母隊',`從 <b class="hl">${fromN}</b> 回歸，你決定重返母隊 <b class="hl">${dest.team}</b>，而 ${dest.team} 也敞開雙臂歡迎你。球迷們無不引頸期盼你的回歸——無論你在海外的成就如何，在他們眼中，你都還是那個離開前的${heroN}。${dest.team} 以${detail}簽下你，讓你繼續在這片熟悉的紅土上，寫完屬於 ${dest.team} 的傳奇。`);
@@ -507,7 +529,7 @@ export function extensionOffer(o){
     const effectiveYear=S.year+1, team=S.teamName();
     /* 提前續約直接覆蓋剩餘舊約；下一球季起領新約，不額外多綁舊約年數。 */
     S.ct=makeContract(y,m,S.lv,d,annual,{extOffered:true},'延長合約');
-    card('gold','延長續約',`為了提前留下你，<b class="hl">${team}</b>決定提前續約，開了一筆固定年薪 <b class="hl">${fmtMoney(annual)}</b> × <b class="hl">${y} 年</b>的新約（合約總額 <b class="hl">${fmtMoney(total)}</b>），並且從 <b class="hl">${effectiveYear} 年</b>生效！`); board(1);
+    card('gold','延長續約',`為了提前留下你，<b class="hl">${team}</b>決定提前續約，開了一筆固定年薪 <b class="hl">${fmtMoneyFx(annual)}</b> × <b class="hl">${y} 年</b>的新約（合約總額 <b class="hl">${fmtMoneyFx(total)}</b>），並且從 <b class="hl">${effectiveYear} 年</b>生效！`); board(1);
     crossOffers(o);
   }, ()=>{ /* 拒絕延長:維持原合約繼續跑 */
     card('info','婉拒延長',`你婉拒了母隊的提前延長，選擇打完現有合約再說。`);
@@ -526,7 +548,7 @@ export function faFlow(o){
     {t:`與 ${S.teamName()} 續約`,main:true,s:'接著選擇長約或短約',
      f:()=>termChoice(o,d,`與 ${S.teamName()} 續約 · 選擇合約類型`,(y,m,annual,total)=>{
        S.ct=makeContract(y,m,S.lv,d,annual,{extOffered:false},'延長合約');
-       card('info','續約',`與 <b class="hl">${S.teamName()}</b> 完成續約：固定年薪 <b class="hl">${fmtMoney(annual)}</b> × <b class="hl">${y} 年</b>，合約總額 <b class="hl">${fmtMoney(total)}</b>。`); advance(); })},
+       card('info','續約',`與 <b class="hl">${S.teamName()}</b> 完成續約：固定年薪 <b class="hl">${fmtMoneyFx(annual)}</b> × <b class="hl">${y} 年</b>，合約總額 <b class="hl">${fmtMoneyFx(total)}</b>。`); advance(); })},
     {t:'跳出合約，測試自由市場',warn:true,s:'成績不佳可能乏人問津，只能回原隊減薪',f:()=>faMarket(o,d)}];
   /* 5a 大聯盟合約走完:能力還撐得住日職一軍的話,亞洲最高殿堂也是一條路。
      faFlow 只在 LV[S.lv].top 時才會跑,所以 S.org==='MiLB' 這裡必定是大聯盟。 */
