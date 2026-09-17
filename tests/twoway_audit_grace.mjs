@@ -33,8 +33,11 @@ try{
     const ability=await import('./src/engine/ability.js?v=2.0.8');
     const {LV}  =await import('./src/data/teams.js?v=2.0.8');
 
-    /* 回報案例的能力側寫：投球側撐得住大聯盟，打擊側只到 2A 的水準。 */
-    const AB={sta:60,vel:62,ctl:60,brk:61,con:52,pow:52,spd:44,eye:48,rng:24,fld:24,arm:24};
+    /* 回報案例的能力側寫：投球側撐得住大聯盟，打擊側只到 2A 的水準。
+       打擊四圍在 TW_BAR 收到 min+1.2 之後往上抬了兩點——測資要的是
+       「過得了 2A、過不了大聯盟」這個關係，不是某一組固定的數字；
+       底下三條斷言會把這個前提再驗一次，所以門檻再動也不會悄悄失效。 */
+    const AB={sta:60,vel:62,ctl:60,brk:61,con:56,pow:55,spd:47,eye:51,rng:24,fld:24,arm:24};
     const mk=(over={},abv)=>{
       const s=state.newState('Lee',50,'TW',null);
       Object.assign(s,{stage:'PRO',year:2034,age:24,org:'MiLB',orgTeam:'孤星騎兵',
@@ -61,7 +64,7 @@ try{
     const tooWeak  =run({lv:'MLB',twAuditLv:'A2'},{con:22,pow:22,spd:22,eye:22}); /* 2A 都站不住 */
 
     /* ⑤ 成績豁免：能力值過不了大聯盟那條線，但上一季弱側真的打出水準。
-       d 是「該季實力 − 該層級 par」，門檻是 (min − par) − TW_BAR＝大聯盟 −3.5。 */
+       d 是「該季實力 − 該層級 par」，門檻是 (min − par) − TW_BAR＝大聯盟 −1.8。 */
     const exempt=run({lv:'MLB',twAuditLv:'MLB',lastLv:'MLB',
       lastSt:{dPit:6,dBat:-1}});                                     /* 弱側 −1 ≥ −3.5 → 留 */
     const noExempt=run({lv:'MLB',twAuditLv:'MLB',lastLv:'MLB',
