@@ -217,8 +217,13 @@ function onePlaythrough(pos,arch,seed,alloc,want){
     return this.orgTeam+'二軍';
   };
   let peakOvr=0,peakCore=0,topLv=null;
+  /* SIDES=1：記下每一次取樣的 (ovrPit, ovrBat, lv)，用來校準二刀流的綜評公式——
+     不知道玩家實際落在哪一區，再漂亮的式子也只是紙上談兵。 */
+  const sides=process.env.SIDES?[]:null;
   globalThis.__sample=()=>{
     const o=ability.ovr(); if(o>peakOvr)peakOvr=o;
+    if(sides&&S.pos==='TW'&&S.stage==='PRO')
+      sides.push([+ability.ovrPit().toFixed(1),+ability.ovrBat().toFixed(1),S.lv,S.age]);
     const c=S.pos==='P'?(S.ab.vel+S.ab.ctl+S.ab.brk)/3
       :S.pos==='TW'?(S.ab.vel+S.ab.brk+S.ab.con+S.ab.pow)/4
       :(S.ab.con+S.ab.pow+S.ab.eye)/3;
@@ -260,7 +265,7 @@ function onePlaythrough(pos,arch,seed,alloc,want){
   }):undefined;
   return {seasons,pos:S.pos,endPos:S.pos,fell:S.twFell||null,
     fellAge:S.twFellAge||null,fellLv:S.twFellLv||null,twSeasons:S.twSeasons||0,corePot:+corePot.toFixed(1),
-    peakOvr,peakCore:+peakCore.toFixed(1),top:topLv?topLv.lv:null,
+    peakOvr,peakCore:+peakCore.toFixed(1),top:topLv?topLv.lv:null,sides:sides||undefined,
     bigInj:S.bigInj||0,tj:S.tjCount||0,retireAge:S.age,salary:S.salary||0,
     proYears:['CPBL','NPB','MLB','MINOR'].reduce((a,b)=>a+((S.stats[b]&&S.stats[b].yr)||0),0),
     traits:Object.keys(S.traits||{}).filter(k=>S.traits[k]),geniusEver:!!S.geniusEver,
