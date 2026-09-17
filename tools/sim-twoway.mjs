@@ -266,6 +266,7 @@ function onePlaythrough(pos,arch,seed,alloc,want){
   return {seasons,pos:S.pos,endPos:S.pos,fell:S.twFell||null,
     fellAge:S.twFellAge||null,fellLv:S.twFellLv||null,twSeasons:S.twSeasons||0,corePot:+corePot.toFixed(1),
     peakOvr,peakCore:+peakCore.toFixed(1),top:topLv?topLv.lv:null,sides:sides||undefined,
+    intl:S.intlCount||0,
     bigInj:S.bigInj||0,tj:S.tjCount||0,retireAge:S.age,salary:S.salary||0,
     proYears:['CPBL','NPB','MLB','MINOR'].reduce((a,b)=>a+((S.stats[b]&&S.stats[b].yr)||0),0),
     traits:Object.keys(S.traits||{}).filter(k=>S.traits[k]),geniusEver:!!S.geniusEver,
