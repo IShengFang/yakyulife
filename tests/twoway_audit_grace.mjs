@@ -11,7 +11,14 @@
      ③ 舊層級就已經站不住 → 升級當季照樣收斂（緩衝不是免死金牌）
      ④ 在新層級站過一季之後，才改用新層級的門檻
      ⑤ 成績豁免：能力值差一點，但上一季弱側真的打出該層級的水準 → 不收斂
-     ⑥ 降級不吃緩衝：往下走的時候直接用當前（較寬）的尺 */
+     ⑥ 降級不吃緩衝：往下走的時候直接用當前（較寬）的尺
+
+   2026-09 補充：成績豁免重寫。舊版拿 st.dPit／st.dBat 當成績，但那其實是
+   換一組權重的能力值，看不見真正的產出。改成兩層都只看「他真的做了什麼」：
+     ⑦ 頭銜硬豁免：上一季拿到該側的任何個人頭銜（含年度MVP）
+     ⑧⑨⑩ 頭銜要對得上年份、聯盟、側別，不是萬用免死金牌
+     ⑪ 樣本要夠：一段熱手換不到豁免
+     ⑫ 核心回歸測試：st.dBat 漂亮但實際成績很爛，還是要收斂 */
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 
@@ -28,10 +35,10 @@ try{
   await page.goto(`${url}?seed=twoway-audit-grace`,{waitUntil:'domcontentloaded'});
 
   const r=await page.evaluate(async()=>{
-    const state =await import('./src/core/state.js?v=2.0.9');
-    const phases=await import('./src/flow/phases.js?v=2.0.9');
-    const ability=await import('./src/engine/ability.js?v=2.0.9');
-    const {LV}  =await import('./src/data/teams.js?v=2.0.9');
+    const state =await import('./src/core/state.js?v=2.0.10');
+    const phases=await import('./src/flow/phases.js?v=2.0.10');
+    const ability=await import('./src/engine/ability.js?v=2.0.10');
+    const {LV}  =await import('./src/data/teams.js?v=2.0.10');
 
     /* 回報案例的能力側寫：投球側撐得住大聯盟，打擊側只到 2A 的水準。
        打擊四圍在 TW_BAR 收到 min+1.2 之後往上抬了兩點——測資要的是
@@ -63,19 +70,32 @@ try{
     const settled  =run({lv:'MLB',twAuditLv:'MLB'});                /* 站過一季，用大聯盟的尺 */
     const tooWeak  =run({lv:'MLB',twAuditLv:'A2'},{con:22,pow:22,spd:22,eye:22}); /* 2A 都站不住 */
 
-    /* ⑤ 成績豁免：能力值過不了大聯盟那條線，但上一季弱側真的打出水準。
-       d 是「該季實力 − 該層級 par」，門檻是 (min − par) − TW_BAR＝大聯盟 −1.8。 */
-    const exempt=run({lv:'MLB',twAuditLv:'MLB',lastLv:'MLB',
-      lastSt:{dPit:6,dBat:-1}});                                     /* 弱側 −1 ≥ −3.5 → 留 */
-    const noExempt=run({lv:'MLB',twAuditLv:'MLB',lastLv:'MLB',
-      lastSt:{dPit:6,dBat:-9}});                                     /* 弱側 −9 → 收斂 */
-    const injured=run({lv:'MLB',twAuditLv:'MLB',lastLv:'MLB',
-      lastSt:{dPit:6}});                                             /* 傷缺季沒有 dBat → 不給豁免 */
+    /* ⑤⑦～⑫ 成績豁免：只看上一季那一側真的做了什麼。
+       ELITE 就是玩家回報的那條數據線（.270／56 轟／165 打點／578 打席）。
+       MEH 打席一模一樣，只是打成聯盟平均以下——兩者唯一的差別就是「成績」。 */
+    const ELITE={PA:578,AB:552,H:149,HR:56,RBI:165,BB:26,avg:149/552};
+    const MEH={PA:578,AB:552,H:128,HR:14,RBI:60,BB:30,avg:128/552};
+    const HOT={PA:150,AB:140,H:42,HR:16,RBI:45,BB:10,avg:42/140};      /* 只有一段熱手 */
+    const DEAD={PA:0,AB:0,H:0,HR:0,RBI:0,BB:0,avg:0};                  /* 傷缺全季 */
+    const base={lv:'MLB',twAuditLv:'MLB',lastLv:'MLB'};
+    const exempt   =run({...base,lastSt:ELITE,honors:[]});              /* 產出豁免 */
+    const noExempt =run({...base,lastSt:MEH,  honors:[]});
+    const injured  =run({...base,lastSt:DEAD, honors:[]});
+    const titled   =run({...base,lastSt:MEH,honors:                     /* 頭銜硬豁免 */
+      ['2033 大聯盟新人王','2033 大聯盟全壘打王','2033 大聯盟打點王','2033 大聯盟年度最佳打者']});
+    const staleTitle=run({...base,lastSt:MEH,honors:['2032 大聯盟全壘打王']});
+    const otherLg  =run({...base,lastSt:MEH,honors:['2033 中職全壘打王']});
+    const wrongSide=run({...base,lastSt:MEH,honors:['2033 大聯盟勝投王','2033 大聯盟防禦率王']});
+    const hotStreak=run({...base,lastSt:HOT, honors:[]});
+    /* 舊版靠 st.dBat 判定。這一筆是「能力值座標系裡很漂亮、實際成績很爛」的組合，
+       舊碼會放行，新碼必須收斂——不然這支測試在舊碼上不會失敗。 */
+    const fakeGoodD=run({...base,lastSt:{...MEH,dBat:2,dPit:6},honors:[]});
 
     /* ⑥ 降級：大聯盟 → 2A，用 2A 的尺（較寬），不吃緩衝也不該被收斂。 */
     const demoted=run({lv:'A2',twAuditLv:'MLB'});
 
-    return {bars,first,promoted,settled,tooWeak,exempt,noExempt,injured,demoted};
+    return {bars,first,promoted,settled,tooWeak,exempt,noExempt,injured,demoted,
+      titled,staleTitle,otherLg,wrongSide,hotStreak,fakeGoodD};
   });
 
   const B=JSON.stringify(r.bars);
@@ -106,6 +126,25 @@ try{
   assert.equal(r.exempt.fired,false,'上一季弱側打出該層級的水準就不該被收斂');
   assert.equal(r.noExempt.fired,true,'弱側成績也不到水準時，豁免不該生效');
   assert.equal(r.injured.fired,true,'沒有該側的成績就沒有豁免，退回能力值判定');
+
+  /* ⑦ 頭銜硬豁免——玩家回報的那一格：全壘打王＋打點王＋年度最佳打者 */
+  assert.equal(r.titled.fired,false,
+    '上一季拿了全壘打王／打點王／年度最佳打者，還被判「打擊跟不上大聯盟」——這就是回報的 bug');
+  assert.equal(r.titled.pos,'TW');
+
+  /* ⑧⑨⑩ 頭銜要對得上年份、聯盟、側別，不能拿來當萬用免死金牌 */
+  assert.equal(r.staleTitle.fired,true,'兩年前的頭銜不該再擋這一年的判定');
+  assert.equal(r.otherLg.fired,true,'在別的聯盟拿的頭銜不該抵這個聯盟的門檻');
+  assert.equal(r.wrongSide.fired,true,'頭銜落在留下來的那一側，不能拿來救被質疑的那一側');
+
+  /* ⑪ 樣本要夠：一段熱手不算一個球季 */
+  assert.equal(r.hotStreak.fired,true,'打席不足的一段熱手不該換到豁免');
+
+  /* ⑫ 這一條是這次改動的核心：豁免看的是成績，不是 st.dBat。
+     舊碼讀 st.dBat，這筆 dBat=2 遠高於舊門檻，舊碼會放行；
+     新碼看實際產出（OPS+ 遠低於 95）→ 必須收斂。 */
+  assert.equal(r.fakeGoodD.fired,true,
+    'st.dBat 漂亮但實際成績很爛，還是給了豁免——成績豁免又在看能力值了');
 
   /* ⑥ */
   assert.equal(r.demoted.fired,false,'降回 2A 之後，用 2A 的尺應該撐得住');

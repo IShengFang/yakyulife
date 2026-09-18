@@ -1,22 +1,22 @@
-import {S, stepQ, nextStep, stageLabel} from '../core/state.js?v=2.0.9';
-import {R, ri, chance, clamp} from '../core/rng.js?v=2.0.9';
-import {ABL, POS_AB} from '../data/abilities.js?v=2.0.9';
-import {LV, PATHS, teamNick} from '../data/teams.js?v=2.0.9';
-import {keepTh} from '../data/thresholds.js?v=2.0.9';
-import {AMA_ANNUAL} from '../data/economy.js?v=2.0.9';
-import {card, choose, board, divider} from '../ui/dom.js?v=2.0.9';
-import {tlNote, tlPush, tlRestage} from '../ui/timeline.js?v=2.0.9';
-import {allocUI} from '../ui/alloc.js?v=2.0.9';
-import {addAb, ovr, ovrPit, ovrBat, dposReview, statBonusTxt} from '../engine/ability.js?v=2.0.9';
-import {rollInjury, tjCap, tjEffortMult} from '../engine/injury.js?v=2.0.9';
-import {isMrTeamEligible} from '../engine/tenure.js?v=2.0.9';
-import {amateurSeason, proSeason, slgOf, currentSalaryRating, baseballERA, baseballWHIP, seasonGrade} from '../engine/season.js?v=2.0.9';
-import {championshipChance} from '../engine/championship.js?v=2.0.9';
-import {buyoutRemaining, contractAnnual, fmtMoneyFx, contractMarketProfile, controlledAnnual, crossOffers, daibaFarewell, extensionOffer, faFlow, fmtMoney, handleDemotion, levelMinAnnual, makeContract, makeOffers, offseasonTradeCheck, pickOfferUI, returnHomeSign, signTo, teamChampRate} from '../engine/contract.js?v=2.0.9';
-import {drawEvents, removeTrait, checkChampionTrait} from './events.js?v=2.0.9';
-import {loveEvent} from './love.js?v=2.0.9';
-import {runDraft, pathChoiceHS, pathChoiceU4, advance} from '../engine/draft.js?v=2.0.9';
-import {endGame} from '../ui/retire.js?v=2.0.9';
+import {S, stepQ, nextStep, stageLabel} from '../core/state.js?v=2.0.10';
+import {R, ri, chance, clamp} from '../core/rng.js?v=2.0.10';
+import {ABL, POS_AB} from '../data/abilities.js?v=2.0.10';
+import {LV, PATHS, envLeagueOps, teamNick} from '../data/teams.js?v=2.0.10';
+import {keepTh} from '../data/thresholds.js?v=2.0.10';
+import {AMA_ANNUAL} from '../data/economy.js?v=2.0.10';
+import {card, choose, board, divider} from '../ui/dom.js?v=2.0.10';
+import {tlNote, tlPush, tlRestage} from '../ui/timeline.js?v=2.0.10';
+import {allocUI} from '../ui/alloc.js?v=2.0.10';
+import {addAb, ovr, ovrPit, ovrBat, dposReview, statBonusTxt} from '../engine/ability.js?v=2.0.10';
+import {rollInjury, tjCap, tjEffortMult} from '../engine/injury.js?v=2.0.10';
+import {isMrTeamEligible} from '../engine/tenure.js?v=2.0.10';
+import {amateurSeason, proSeason, slgOf, currentSalaryRating, baseballERA, baseballWHIP, seasonGrade} from '../engine/season.js?v=2.0.10';
+import {championshipChance} from '../engine/championship.js?v=2.0.10';
+import {buyoutRemaining, contractAnnual, fmtMoneyFx, contractMarketProfile, controlledAnnual, crossOffers, daibaFarewell, extensionOffer, faFlow, fmtMoney, handleDemotion, levelMinAnnual, makeContract, makeOffers, offseasonTradeCheck, pickOfferUI, returnHomeSign, signTo, teamChampRate} from '../engine/contract.js?v=2.0.10';
+import {drawEvents, removeTrait, checkChampionTrait} from './events.js?v=2.0.10';
+import {loveEvent} from './love.js?v=2.0.10';
+import {runDraft, pathChoiceHS, pathChoiceU4, advance} from '../engine/draft.js?v=2.0.10';
+import {endGame} from '../ui/retire.js?v=2.0.10';
 /* ================= 年度流程 ================= */
 export function startYear(){ S.yearOutsideIncome=0; stepQ.length=0; stepQ.push(phasePre,phaseMid,phaseEnd); divider(`${S.year} 年 · ${S.age} 歲 · ${stageLabel()}`); tlPush(); nextStep(); }
 /* 七下保送幾顆「6」。天才需要 5 顆，保送不足的部分要玩家自己擲出來。
@@ -105,19 +105,57 @@ export function convertToTwoWay(origin){
      ③ 成績豁免：上一季弱側真的打出該層級的水準，就不看能力值。
         數據講話優先於能力值講話——這是玩家回報那一局該有的待遇。 */
 export const TW_BAR=-1.2;
-/* 成績豁免的門檻換算到 st.dPit／st.dBat 的座標系。
-   d 是「該季實力 − 該層級 par」，能力門檻是「min − TW_BAR」，
-   所以同一條線在 d 空間就是 (min − par) − TW_BAR（各層級 min−par 約 −2～−3）。
-   d 含當季狀態火燙／低潮的 ±4，所以這是「成績」而不是「能力」的判定。 */
-function perfBarOf(L){ return (L.min-L.par)-TW_BAR; }
-/* 上一季弱側的實際成績夠不夠格留在那個層級。傷缺季／復健年沒有該側的 d，回 false
-   （沒有數據就不給豁免，退回能力值判定），不要把 undefined 當成通過。 */
+/* ── 成績豁免（2026-09 重寫）──
+   玩家回報：大聯盟新人王＋全壘打王＋打點王＋年度最佳打者、.270／56 轟／165 打點，
+   隔年季初被判「打擊跟不上大聯盟」。
+
+   舊版的「成績豁免」拿 st.dPit／st.dBat 當成績，但那兩個值是
+       dBat = con×0.5 + pow×0.2 + eye×0.18 + spd×0.12 − par − 0.5
+   ——換一組權重的能力值而已，唯一跟成績有關的成分是狀態火燙／低潮的 ±4。
+   它看不見 56 轟，也看不見打點王。卡片寫「球團把數據攤在你面前」，
+   那個當下桌上其實沒有數據。離線實測 890 次收斂：有人上一季拿了打點王＋年度MVP，
+   dBat −2.04 對門檻 −1.80，差 0.24 出局；另一位上一季全壘打王，差 0.04。
+   兩道關卡（能力值與 d）量的幾乎是同一個東西，而且都是刀鋒。
+
+   改成兩層，兩層都只看他真的做了什麼：
+     ① 頭銜硬豁免——那一側上一季拿到任何個人頭銜（含年度MVP）。
+        聯盟自己認證他是那個項目最強的人之一，沒有任何能力值可以推翻這件事。
+     ② 產出豁免——上一季該側的 OPS+／ERA+ 達到這個層級的門檻水準。
+        校準（各層級 500 季，能力值全設成 min+1.2，也就是現行的能力門檻）：
+          中職一軍 OPS+ 94／ERA+ 96　　日職一軍 95／96　　大聯盟 95／96
+        所以 95 就是「能力剛好踩在門檻上的人會打出來的產出」。
+        兩條線量的是同一件事，差別只在一條量工具、一條量結果——
+        結果贏了工具，就以結果為準。 */
+export const TW_PERF_OPS=95, TW_PERF_ERA=95;
+/* 取樣門檻：樣本太小的話一段熱手就能換到豁免。打席抓滿季的 1.2 倍、局數抓 0.3 倍
+   （二刀流本來兩邊都打折，不能拿單刀的規模去要求他）。 */
+const twPaGate=L=>Math.round((L.g||120)*1.2), twIpGate=L=>Math.round((L.g||120)*0.30);
+const TW_BAT_TITLE=/(打擊王|全壘打王|打點王|上壘王|盜壘王|年度最佳打者|打擊三冠王|年度MVP)$/;
+const TW_PIT_TITLE=/(勝投王|防禦率王|三振王|救援王|中繼王|年度最佳投手|投手三冠王|年度MVP)$/;
+const TW_LGN={CPBL:'中職',NPB:'日職',MLB:'大聯盟'};
+/* 頭銜字串長這樣：`2037 大聯盟全壘打王`。只認上一季、而且是上一季那個聯盟的頭銜——
+   去年在中職拿的勝投王不該用來抵今年大聯盟的門檻。 */
+function twTitlePass(keepPit,L){
+  const lg=L&&L.top?TW_LGN[L.top]:null; if(!lg)return false;
+  const re=keepPit?TW_BAT_TITLE:TW_PIT_TITLE, head=`${S.year-1} ${lg}`;
+  return (S.honors||[]).some(h=>typeof h==='string'&&h.startsWith(head)&&re.test(h));
+}
+function twOutputPass(keepPit,L,st){
+  if(!st||!L||!L.env)return false;
+  if(keepPit){                               /* 被質疑的是打擊 */
+    if(!(st.PA>0)||st.PA<twPaGate(L))return false;
+    const lg=envLeagueOps(L.env); if(!(lg>0))return false;
+    return ((st.H+st.BB)/st.PA+slgOf(st))/lg*100>=TW_PERF_OPS;
+  }
+  if(!((st.IP||0)>=twIpGate(L))||!(st.era>0))return false;
+  return L.env.era/st.era*100>=TW_PERF_ERA;
+}
+/* 上一季弱側到底做了什麼。傷缺季／復健年沒有那一側的數據，兩層都過不了 → 回 false，
+   退回能力值判定；不要把「沒打」當成「打得好」。 */
 function twPerfPass(keepPit){
-  const st=S.lastSt, LL=LV[S.lastLv||S.lv];
-  if(!st||!LL||!Number.isFinite(LL.min))return false;
-  const dv=keepPit?st.dBat:st.dPit;         /* 被質疑的是弱側，也就是沒被留下的那一邊 */
-  if(!Number.isFinite(dv))return false;
-  return dv>=perfBarOf(LL);
+  const L=LV[S.lastLv||S.lv];
+  if(twTitlePass(keepPit,L))return true;
+  return twOutputPass(keepPit,L,S.lastSt);
 }
 export function twoWayAudit(){
   if(S.pos!=='TW'||S.stage!=='PRO')return false;

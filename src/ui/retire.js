@@ -1,18 +1,18 @@
-import {S, blankStat, bucketOf} from '../core/state.js?v=2.0.9';
-import {R, ri, SEED} from '../core/rng.js?v=2.0.9';
-import {OFFICIAL_URL} from '../config.js?v=2.0.9';
-import {LV, LG_N, CPBL_TEAMS, NPB_TEAMS, MLB_TEAMS, teamNick} from '../data/teams.js?v=2.0.9';
-import {TIER_TH, FAN, RP_LV_SUF} from '../data/economy.js?v=2.0.9';
-import {TRAIT_KEYS} from '../data/traits.js?v=2.0.9';
-import {$, card, choose, divider, board, actClear} from './dom.js?v=2.0.9';
-import {careerTimelineCard, tlNote} from './timeline.js?v=2.0.9';
-import {traitNames, traitTagStyle, traitColorRank} from './traits.js?v=2.0.9';
-import {roleN, fmtIP, slgOf, baseballERA, baseballWHIP, pitG, pitBB} from '../engine/season.js?v=2.0.9';
-import {fmtMoney} from '../engine/contract.js?v=2.0.9';
-import {isChampionshipYear, isProChampionshipYear} from '../engine/championship.js?v=2.0.9';
+import {S, blankStat, bucketOf} from '../core/state.js?v=2.0.10';
+import {R, ri, SEED} from '../core/rng.js?v=2.0.10';
+import {OFFICIAL_URL} from '../config.js?v=2.0.10';
+import {LV, LG_N, CPBL_TEAMS, NPB_TEAMS, MLB_TEAMS, teamNick} from '../data/teams.js?v=2.0.10';
+import {TIER_TH, FAN, RP_LV_SUF} from '../data/economy.js?v=2.0.10';
+import {TRAIT_KEYS} from '../data/traits.js?v=2.0.10';
+import {$, card, choose, divider, board, actClear} from './dom.js?v=2.0.10';
+import {careerTimelineCard, tlNote} from './timeline.js?v=2.0.10';
+import {traitNames, traitTagStyle, traitColorRank} from './traits.js?v=2.0.10';
+import {roleN, fmtIP, slgOf, baseballERA, baseballWHIP, pitG, pitBB} from '../engine/season.js?v=2.0.10';
+import {fmtMoney} from '../engine/contract.js?v=2.0.10';
+import {isChampionshipYear, isProChampionshipYear} from '../engine/championship.js?v=2.0.10';
 import {capTeam, careerMilestones, honorGroups, honorSections, posLegendPhrase, primaryPos, statTable, tierOf, yearRanges, honorText,
-  twoWayView, twHasPit, twHasBat, statTables, yrsOf} from '../engine/career.js?v=2.0.9';
-import {shareImageSheet} from './share-image.js?v=2.0.9';
+  twoWayView, twHasPit, twHasBat, statTables, yrsOf} from '../engine/career.js?v=2.0.10';
+import {shareImageSheet} from './share-image.js?v=2.0.10';
 /* ================= 結算圖資料建構 =================
    Data builders for shareImage()'s canvas layout (design handoff 2026-08-14).
    All values come from S.*; the in-game settlement cards are untouched. */
