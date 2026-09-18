@@ -142,14 +142,14 @@ export function rollInjury(){
   S.injNext=0;
   if(chance(64)){ // 64% 的機率是小傷
     const cut=ri(20,45); S.seasonFactor=1-cut/100; S.ironStreak=0; S.marketInjury='minor';
-    card('bad','小傷',`肌肉拉傷進了傷兵名單，本季出賽量預估減少 <b class="dn">${cut}%</b>。${injStatLoss(false)}`);
+    card('bad','小傷',`肌肉拉傷進了傷兵名單，本季出賽量預估減少 <b class="dn">${cut}%</b>。${injStatLoss(false)}（受傷機率 ${p}%）`);
   }else{
     const played = ri(5, 45); /* 讓賽季隨機進行了 5% ~ 45% 時才受傷 */
     S.seasonFactor = played / 100; /* 把比例套用到當季出賽 */
     S.bigInj++; S.ironStreak=0; S.marketInjury='major';
     let txt=`重大傷勢——進手術室了。<b class="dn">賽季提前報銷</b>（本季留下 ${played}% 的出賽紀錄）。`;
     if(chance(20)){ S.rehab=1; txt+=`醫生搖搖頭：<b class="dn">明年也很難趕上開季</b>（明年整季報廢）。`; }
-    card('bad','大傷',txt+injStatLoss(true));
+    card('bad','大傷',txt+injStatLoss(true)+`（受傷機率 ${p}%）`);
     if(S.bigInj>=2&&!S.traits.glass&&S.age<32){ /* 32 歲後的大傷是老化,不再定性為玻璃體質 */
       /* 玻璃人與鐵人互為對立體質，不可並存：本來是鐵人的話直接被玻璃人覆蓋過去。 */
       const wasIron=!!S.traits.iron;
