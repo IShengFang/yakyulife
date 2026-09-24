@@ -1,3 +1,4 @@
+import {initPWA, pwaCanStart} from './pwa.js?v=2.0.11';
 import {SEED, setSeed, seedInit} from './core/rng.js?v=2.0.11';
 import {S, setS, newState} from './core/state.js?v=2.0.11';
 import {APP_VER} from './config.js?v=2.0.11';
@@ -146,6 +147,7 @@ bindPosSeg();
   }
 })();
 $('btn-start').onclick=()=>{
+  if(!pwaCanStart())return;
   const sv=$('seed-show').value.trim(); if(sv)setSeed(sv); /* 玩家可直接輸入流水碼 */
   history.replaceState(null,'','?seed='+encodeURIComponent(SEED));
   seedInit(SEED);
@@ -191,24 +193,6 @@ $('btn-start').onclick=()=>{
   card('info','球員誕生',`${S.year} 年春天，${POSN[S.pos]} <b class="hl">${S.name}</b> 加入 <b class="hl">${S.team}</b> 棒球隊。雄心壯志，野心勃勃，他的世界正要因為棒球展開。<br><span style="color:var(--dim);font-size:12px">提示：22 歲前累積擲出 5 次「6」可覺醒隱藏素質。</span>`);
   startYear();
 };
-/* ================= PWA installability: manifest built at runtime as a Blob; icons are
-   assets/ files (the logo system ships file assets, so the single-file constraint is gone) ================= */
-(function(){
-  if(!/^https?:$/.test(location.protocol))return; /* keep file:// double-click usage untouched */
-  try{
-    const dir=location.origin+location.pathname.replace(/[^/]*$/,'');
-    const mf={id:dir,name:document.title||'YaKyoLife - 棒球人生模擬器',short_name:'YaKyoLife',
-      description:'從高中三大賽到名人堂，一場種子化的台灣棒球員生涯模擬。',
-      lang:'zh-Hant',start_url:dir,scope:dir,display:'standalone',
-      background_color:'#081510',theme_color:'#081510',
-      icons:[{src:dir+'assets/app-icon-192.png',sizes:'192x192',type:'image/png',purpose:'any'},
-        {src:dir+'assets/app-icon-512.png',sizes:'512x512',type:'image/png',purpose:'any'},
-        {src:dir+'assets/app-icon-512.png',sizes:'512x512',type:'image/png',purpose:'maskable'}]};
-    const l=document.createElement('link'); l.rel='manifest';
-    l.href=URL.createObjectURL(new Blob([JSON.stringify(mf)],{type:'application/manifest+json'}));
-    document.head.appendChild(l);
-  }catch(e){}
-})();
 (function(){ const vb=document.getElementById('ver-badge'); if(vb)vb.textContent=APP_VER;
   const tv=document.getElementById('tl-ver'); if(tv)tv.textContent=APP_VER;
   const gv=document.getElementById('game-ver'); if(gv)gv.textContent=APP_VER; })();
@@ -221,3 +205,5 @@ $('btn-start').onclick=()=>{
   if(window.matchMedia('(hover:hover)').matches)
     cell.addEventListener('mouseleave',()=>cell.classList.remove('show')); })();
 
+
+initPWA();

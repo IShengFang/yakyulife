@@ -1,4 +1,6 @@
 export const APP_VER='v2.0.11';
+// Rules compatibility is independent of release BUILD_ID. Save schema arrives in Phase 3.
+export const RULES_VERSION='v2.0.11';
 export const OFFICIAL_URL='https://ishengfang.github.io/yakyulife/';
 export const OFFICIAL_HOST=OFFICIAL_URL.replace(/^https?:\/\//,'').replace(/\/$/,'');
 /* 贊助頁：遊戲內選單用。首頁右上角的入口是 index.html 裡的靜態 <a>（不經 JS，才不會閃一下），

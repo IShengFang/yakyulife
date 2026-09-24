@@ -6,13 +6,15 @@ import {fileURLToPath} from 'node:url';
 const root=path.resolve(fileURLToPath(new URL('../',import.meta.url)));
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
   '.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8',
-  '.json':'application/json; charset=utf-8','.svg':'image/svg+xml',
+  '.json':'application/json; charset=utf-8','.webmanifest':'application/manifest+json','.svg':'image/svg+xml',
   '.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp',
   '.woff':'font/woff','.woff2':'font/woff2','.ico':'image/x-icon'};
 
-export async function startServer({port=8124,base='/',host='127.0.0.1'}={}){
+export async function startServer({port=8124,base='/',host='127.0.0.1',directory=root,onRequest}={}){
   if(!base.startsWith('/')||!base.endsWith('/'))throw new Error('base must start and end with /');
   const server=http.createServer(async(req,res)=>{
+    if(onRequest&&await onRequest(req,res))return;
+    const servingRoot=path.resolve(typeof directory==='function'?directory():directory);
     let pathname;
     try{pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname);}
     catch{res.writeHead(400).end();return;}
@@ -21,8 +23,8 @@ export async function startServer({port=8124,base='/',host='127.0.0.1'}={}){
     if(rel.split('/').includes('..')||rel.startsWith('.')||rel.includes('\\')){
       res.writeHead(403).end();return;
     }
-    const file=path.resolve(root,rel);
-    if(!file.startsWith(root+path.sep)){res.writeHead(403).end();return;}
+    const file=path.resolve(servingRoot,rel);
+    if(!file.startsWith(servingRoot+path.sep)){res.writeHead(403).end();return;}
     try{
       const stat=await fs.stat(file);
       if(!stat.isFile())throw new Error('not a file');
@@ -37,6 +39,6 @@ export async function startServer({port=8124,base='/',host='127.0.0.1'}={}){
 }
 
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
-  const {url}=await startServer({port:Number(process.env.PORT||8124),base:process.env.APP_BASE||'/'});
+  const {url}=await startServer({port:Number(process.env.PORT||8124),base:process.env.APP_BASE||'/',directory:process.env.SITE_ROOT||root});
   process.stdout.write(`Serving ${url}\n`);
 }

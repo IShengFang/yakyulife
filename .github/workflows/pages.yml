@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   test:
-    name: 回歸測試
+    name: 建置與驗證發布產物
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +44,14 @@ jobs:
       - name: 完整驗證
         run: npm run check
 
+      - uses: actions/configure-pages@v5
+
+      # check 只建置一次 _site；上傳的就是通過資源與 PWA 驗證的那份。
+      # CNAME 留作紀錄，實際自訂網域由 Pages 後台設定。
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
   deploy:
     name: 部署
     needs: test            # 測試沒過就不部署
@@ -52,26 +60,5 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: 組出要上線的檔案
-        run: |
-          # 排除開發工具與測試；CNAME 留作紀錄，實際自訂網域由 Pages 後台設定。
-          mkdir -p _site
-          tar -cf - \
-            --exclude=./.git --exclude=./.github --exclude=./tests \
-            --exclude=./docs --exclude=./scripts --exclude=./node_modules --exclude=./_site \
-            --exclude=./package.json --exclude=./package-lock.json --exclude=./AGENTS.md \
-            . | tar -xf - -C _site
-          test -f _site/index.html || { echo "✗ index.html 不見了，中止部署"; exit 1; }
-          echo "將上線的頂層項目："
-          ls -1 _site
-
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-
       - id: deployment
         uses: actions/deploy-pages@v4

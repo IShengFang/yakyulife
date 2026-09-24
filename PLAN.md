@@ -2,7 +2,7 @@
 
 核對日期：2026-09-24。程式基準：`b19310f`（合併後 HEAD），版本提交：`9b17859`，`src/config.js` 的 `APP_VER='v2.0.11'`。
 
-**結論：升級到 v2.0.11 後，可用 GitHub Pages 部署，並在完成 PWA 快取與本機存檔後支援 mobile 離線遊玩。** 遊戲運算與資料都在本機，沒有新增必須連線的遊戲 API；但目前仍沒有 Service Worker 或生涯存檔，不能把現有版本視為已完成離線 App。Phase 0 的程式碼基準已建立；發布與真機閘門仍待維護者確認。
+**結論：升級到 v2.0.11 後，可用 GitHub Pages 部署，並在完成 PWA 快取與本機存檔後支援 mobile 離線遊玩。** 遊戲運算與資料都在本機，沒有新增必須連線的遊戲 API；Phase 1 已補上 Service Worker、完整離線資源與安全更新，但仍沒有生涯存檔，尚不支援中斷續玩。Phase 0／1 的程式碼與本機自動化驗證已完成；實際發布與真機閘門仍待維護者確認。
 
 ## 1. 目標與前提
 
@@ -71,7 +71,7 @@ GitHub Pages 可提供本案的 HTML、CSS、JavaScript 與其他靜態資源，
 | 此 repository 已設定的自訂網域，例如 `https://www.yakyolife.com/` | `/` | `/sw.js` |
 | 無自訂網域的 project site，例如 `https://ishengfang.github.io/yakyulife/` | `/yakyulife/` | `/yakyulife/sw.js` |
 
-- [ ] `sw.js` 與 `index.html` 同放發布目錄根層，scope 限於該 App base；manifest、資源與註冊 URL 依相同 base 解析。不能把 worker 放在 `src/` 再要求控制整站，也不以額外的 `Service-Worker-Allowed` 回應標頭作部署前提。[Service Worker 註冊與 scope](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerContainer/register)
+- [x] `sw.js` 與 `index.html` 同放發布目錄根層，scope 限於該 App base；manifest、資源與註冊 URL 依相同 base 解析。不能把 worker 放在 `src/` 再要求控制整站，也不以額外的 `Service-Worker-Allowed` 回應標頭作部署前提。[Service Worker 註冊與 scope](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerContainer/register)
 - [ ] Pages 的 Source 設為 GitHub Actions，確認部署工作成功及正式網址的 HTTPS。自訂網域須在此 repository 的 Pages 後台設定並有正確 DNS／憑證；Actions 發布時，GitHub 不用 `CNAME` 檔案決定網域。保留該檔可作專案紀錄，但須修正現有 workflow 中「CNAME 決定網域」的註解。[GitHub 自訂網域設定](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site)
 - [ ] 部署 origin 以此 repository 實際 Pages 設定為準；repo 內寫著 `www.yakyolife.com` 不代表此 fork 已綁定該網域。沒有自訂網域時使用 project site，同步 `OFFICIAL_URL`、canonical、分享連結與 README，不能讓重播連結跳到另一個部署。兩種部署路徑均須通過測試。
 - [ ] 首次連線下載完整資源並確認可離線使用後，關閉 App、開啟飛航模式、重新啟動，驗證可開新生涯及遊玩至引退；Phase 3 完成後再驗證中斷續玩。離線期間不需要連回 GitHub Pages，更新版本時才重新下載。[Service Worker 離線快取](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers)
@@ -135,20 +135,22 @@ Codex 雲端完成條件：全新 checkout 可由 setup script 建好環境，�
 
 ### Phase 1 — 正式 PWA 與遠端發布
 
-預計異動：`index.html`、`src/main.js`、`src/config.js`、既有 `.github/workflows/pages.yml`；新增 `manifest.webmanifest`、`sw.js`、`src/pwa.js`、發布資源清單產生器與本機圖示資產。
+實作與驗證紀錄見 [`docs/phase1-pwa.md`](docs/phase1-pwa.md)。程式碼／自動化完成；正式發布與 iPhone 閘門尚未完成。
 
-- [ ] 把 Blob manifest 移成靜態 `manifest.webmanifest`，以部署目錄為基準設定穩定 `id`、相對 `start_url`／`scope`、192／512 圖示、名稱、主題色及 `display: standalone`。180 圖示保留為 Apple touch icon；maskable 必須確認裁切安全區，不能只宣告用途。
-- [ ] 在 `index.html` 直接連結 manifest，保留 Apple touch icon 與 standalone meta。
-- [ ] 新增 Service Worker 註冊模組，URL 固定為部署目錄下的 `sw.js`；註冊失敗降級成一般網頁並顯示離線尚未就緒。只有必要資源全數驗證、worker 啟用且頁面由同版本控制後才顯示「可離線使用」，不以首頁出現或 `ready` 單一事件作判準。
-- [ ] 由發布 artifact 產生完整 precache 清單：HTML、CSS、靜態／動態 import 的 JS、manifest、圖示、字型、logo／wordmark 等 CSS／DOM 引用資產。保留完整 query 與相對路徑，從清單檢查缺檔、MIME、大小及內容雜湊。
-- [ ] 將必要的 Phosphor CSS 與實際引用字型自託管並保留授權；也可沿用現有圖示設計轉成本機 SVG。Google Fonts 可用系統字型降級，圖示不可變空白。保留結算圖 `ensureFonts()` 現有 2.5 秒逾時／fallback，驗證離線不阻塞產圖。
-- [ ] 受控導覽固定回傳 active worker 的完整 shell；只對 app 根目錄／`index.html` 導覽映射到該 shell，保留瀏覽器的 `?seed=`。JS／CSS 缺檔不得回 HTML，也不得全域 `ignoreSearch` 抹掉版本鍵。這裡取代原計畫的 HTML network-first，避免 waiting 期間先載入新版入口。
-- [ ] cache 名稱含專案／scope 前綴及唯一 `buildId`；`APP_VER`、資源 build ID、存檔 `schemaVersion` 與 `rulesVersion` 分開管理。同 APP_VER 的修補或回退也要有可辨識的資源版本。
-- [ ] `?v=` 只是請求鍵，不保證靜態主機保留舊內容。安裝時以發布清單的雜湊驗證每份回應，全部成功才允許新 worker 進入待用狀態；失敗刪除該次不完整 cache、保留現役版本並允許重試。同一 active cache 不可被背景更新覆寫成新版本 bytes。
-- [ ] 版本 token 由單一來源產生，或以 CI 驗證明確映射：目前允許入口 `2.0.11-ui-complete` → 核心 `2.0.11`。涵蓋 HTML、所有 import、測試中動態 import 與 precache；避免同一 state／RNG module 因不同 URL 被載入為兩份實例。
-- [ ] 新 worker 完整安裝後顯示「新版本可用」，由玩家選擇更新。Phase 3 前，進行中的生涯延後至首頁／結束後更新；Phase 3 後須先完成 checkpoint transaction 與存檔相容性檢查。不得在 install 無條件 `skipWaiting()`／強制 reload。
-- [ ] 啟用更新前協調同一 registration 的所有開啟頁面；仍有未存操作或無法確認狀態的 client 就延後，成功後各頁只 reload 一次。確認舊 client 已退出才清理不再需要的專案 cache，不碰 IndexedDB／其他站點 cache。首次安裝也不得把已在玩的未受控頁面直接切換版本。
-- [ ] 延伸既有 Pages workflow：產出一次 `_site`、對該 artifact 跑資源檢查與 PWA 測試，再部署同一份。使用 runtime 檔案白名單（含 `CNAME`、manifest、worker、本機字型），避免現有整個 repo 複製方式把 `tools/`、計畫、測試工具或 setup script 一起上線。
+異動：`index.html`、`src/main.js`、`src/config.js`、既有 `.github/workflows/pages.yml`；新增 `manifest.webmanifest`、`sw.js`、`src/pwa.js`、發布資源清單產生器與本機圖示資產。
+
+- [x] 把 Blob manifest 移成靜態 `manifest.webmanifest`，以部署目錄為基準設定穩定 `id`、相對 `start_url`／`scope`、192／512 圖示、名稱、主題色及 `display: standalone`。180 圖示保留為 Apple touch icon；maskable 必須確認裁切安全區，不能只宣告用途。
+- [x] 在 `index.html` 直接連結 manifest，保留 Apple touch icon 與 standalone meta。
+- [x] 新增 Service Worker 註冊模組，URL 固定為部署目錄下的 `sw.js`；註冊失敗降級成一般網頁並顯示離線尚未就緒。只有必要資源全數驗證、worker 啟用且頁面由同版本控制後才顯示「可離線使用」，不以首頁出現或 `ready` 單一事件作判準。
+- [x] 由發布 artifact 產生完整 precache 清單：HTML、CSS、靜態／動態 import 的 JS、manifest、圖示、字型、logo／wordmark 等 CSS／DOM 引用資產。保留完整 query 與相對路徑，從清單檢查缺檔、MIME、大小及內容雜湊。
+- [x] 將必要的 Phosphor CSS 與實際引用字型自託管並保留授權；也可沿用現有圖示設計轉成本機 SVG。Google Fonts 可用系統字型降級，圖示不可變空白。保留結算圖 `ensureFonts()` 現有 2.5 秒逾時／fallback，驗證離線不阻塞產圖。
+- [x] 受控導覽固定回傳 active worker 的完整 shell；只對 app 根目錄／`index.html` 導覽映射到該 shell，保留瀏覽器的 `?seed=`。JS／CSS 缺檔不得回 HTML，也不得全域 `ignoreSearch` 抹掉版本鍵。這裡取代原計畫的 HTML network-first，避免 waiting 期間先載入新版入口。
+- [x] cache 名稱含專案／scope 前綴及唯一 `buildId`；`APP_VER`、資源 build ID、存檔 `schemaVersion` 與 `rulesVersion` 分開管理。同 APP_VER 的修補或回退也要有可辨識的資源版本。
+- [x] `?v=` 只是請求鍵，不保證靜態主機保留舊內容。安裝時以發布清單的雜湊驗證每份回應，全部成功才允許新 worker 進入待用狀態；失敗刪除該次不完整 cache、保留現役版本並允許重試。同一 active cache 不可被背景更新覆寫成新版本 bytes。
+- [x] 版本 token 由單一來源產生，或以 CI 驗證明確映射：目前允許入口 `2.0.11-ui-complete` → 核心 `2.0.11`。涵蓋 HTML、所有 import、測試中動態 import 與 precache；避免同一 state／RNG module 因不同 URL 被載入為兩份實例。
+- [x] 新 worker 完整安裝後顯示「新版本可用」，由玩家選擇更新。Phase 3 前，進行中的生涯延後至首頁／結束後更新；Phase 3 後須先完成 checkpoint transaction 與存檔相容性檢查。不得在 install 無條件 `skipWaiting()`／強制 reload。
+- [x] 啟用更新前協調同一 registration 的所有開啟頁面；仍有未存操作或無法確認狀態的 client 就延後，成功後各頁只 reload 一次。確認舊 client 已退出才清理不再需要的專案 cache，不碰 IndexedDB／其他站點 cache。首次安裝也不得把已在玩的未受控頁面直接切換版本。
+- [x] 延伸既有 Pages workflow：產出一次 `_site`、對該 artifact 跑資源檢查與 PWA 測試，再部署同一份。使用 runtime 檔案白名單（含 `CNAME`、manifest、worker、本機字型），避免現有整個 repo 複製方式把 `tools/`、計畫、測試工具或 setup script 一起上線。
 
 上述更新策略採整份版本切換；`skipWaiting()` 可能讓新 worker 控制仍載有舊程式的頁面，因此須另測多分頁與中斷更新。[Service Worker 生命週期](https://web.dev/articles/service-worker-lifecycle)
 

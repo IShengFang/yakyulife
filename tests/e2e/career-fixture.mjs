@@ -10,7 +10,7 @@ export async function runCareer(url,fixture,record=false,options={}){
   try{
     page=await browser.newPage({reducedMotion:'reduce'});
     const pageErrors=[];page.on('pageerror',e=>pageErrors.push(e.message));
-    await page.route(/^https?:/,route=>new URL(route.request().url()).origin===new URL(url).origin
+    if(!options.realNetwork)await page.route(/^https?:/,route=>new URL(route.request().url()).origin===new URL(url).origin
       ?route.continue():route.fulfill({status:200,contentType:'text/css',body:''}));
     await page.goto(new URL(`?seed=${encodeURIComponent(fixture.seed)}`,url).href,
       {waitUntil:'domcontentloaded'});
@@ -19,7 +19,8 @@ export async function runCareer(url,fixture,record=false,options={}){
     await page.locator(`#seg-pos button[data-v="${fixture.pos}"]`).click();
     await page.locator('#btn-start').click();
     const result=await page.evaluate(async({record,expected,conversion,probe})=>{
-      const {S}=await import('./src/core/state.js?v=2.0.11');
+      const build=document.querySelector('meta[name="yakyulife-build"]')?.content;
+      const {S}=await import('./src/core/state.js?v=2.0.11'+(build?'&build='+build:''));
       const actions=[],years=[];
       let at=0,lastYear=S.year,undid=false,sawConversion=false;
       const text=el=>el.textContent.trim().replace(/\s+/g,' ');
@@ -81,6 +82,7 @@ export async function runCareer(url,fixture,record=false,options={}){
     assert.ok(result.final.done,'career must reach retirement');
     assert.ok(result.undid,'career must exercise allocation undo');
     if(fixture.conversion)assert.ok(result.sawConversion,'conversion offer was not reached');
+    if(options.afterCareer)await options.afterCareer(page);
     return result;
   }finally{if(page)await page.close();if(!options.browser)await browser.close();}
 }

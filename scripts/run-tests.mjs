@@ -11,10 +11,7 @@ if(mode==='regression')files=(await fs.readdir(path.join(root,'tests')))
   .filter(x=>x.endsWith('.mjs')).sort().map(x=>`tests/${x}`);
 else if(mode==='e2e')files=['tests/e2e/smoke.mjs','tests/e2e/paths.mjs',
   'tests/e2e/fixture.mjs','tests/e2e/headless-compare.mjs'];
-else if(mode==='pwa'){
-  process.stdout.write('Phase 1 pending: no Service Worker or PWA tests exist in Phase 0.\n');
-  process.exit(0);
-}else throw new Error(`Unknown test group: ${mode}`);
+else throw new Error(`Unknown test group: ${mode}`);
 if(!files.length)throw new Error(`No ${mode} tests found`);
 
 const local=process.env.YAKYOLIFE_URL?null:await startServer({port:0,base:process.env.APP_BASE||'/'});

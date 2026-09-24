@@ -28,13 +28,12 @@
 <!-- favicon: bare full-bleed ball (owner request; matches the pre-logo-system tab icon).
      The dark-bg 3c app icon stays on apple-touch-icon and the PWA manifest. -->
 <link rel="icon" type="image/png" href="assets/favicon-64.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="assets/app-icon-180.png">
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Mono:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Serif+TC:wght@500;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/bold/style.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
+<link rel="stylesheet" href="assets/phosphor/regular/style.css">
+<link rel="stylesheet" href="assets/phosphor/bold/style.css">
+<link rel="stylesheet" href="assets/phosphor/fill/style.css">
 <link rel="stylesheet" href="css/style.css?v=2.0.11-ui-complete">
 </head>
 <body>
@@ -91,6 +90,7 @@
     </div>
   </div>
   <footer id="start-footer">
+    <div id="pwa-panel" aria-label="離線與更新"><span id="pwa-status" role="status">離線尚未就緒</span><button id="pwa-action" type="button" hidden></button></div>
     <button class="btn main" id="btn-start"><i class="ph-fill ph-play" aria-hidden="true"></i><span>開始生涯 ▸ 高一春天</span></button>
     <div class="start-secondary">
     <!-- Display preferences sit apart from the career choices above and are collapsed by

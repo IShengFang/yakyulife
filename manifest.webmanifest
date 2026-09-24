@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "YaKyoLife - 棒球人生模擬器",
+  "short_name": "YaKyoLife",
+  "description": "從高中三大賽到名人堂，一場種子化的台灣棒球員生涯模擬。",
+  "lang": "zh-Hant",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#081510",
+  "theme_color": "#081510",
+  "icons": [
+    {"src": "assets/app-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "assets/app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}
+  ]
+}
