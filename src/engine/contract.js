@@ -1,18 +1,18 @@
-import {S} from '../core/state.js?v=1.5.6';
-import {R, ri, pick, chance, clamp, SEED} from '../core/rng.js?v=1.5.6';
-import {LV, PATHS, CPBL_TEAMS, NPB_TEAMS, MLB_TEAMS} from '../data/teams.js?v=1.5.6';
-import {AMA_ANNUAL, LEVEL_MIN_ANNUAL, MLB_SERVICE_MINOR_MIN} from '../data/economy.js?v=1.5.6';
-import {card, choose, board} from '../ui/dom.js?v=1.5.6';
-import {tlNote} from '../ui/timeline.js?v=1.5.6';
-import {ovr} from './ability.js?v=1.5.6';
-import {injuryMarketStatus} from './injury.js?v=1.5.6';
-import {hasActiveFranchise} from './tenure.js?v=1.5.6';
-import {seasonSalaryRating, currentSalaryRating} from './season.js?v=1.5.6';
-import {capTeam} from './career.js?v=1.5.6';
-import {traitCard, removeTrait} from '../flow/events.js?v=1.5.6';
-import {advance} from './draft.js?v=1.5.6';
-import {finishContractYear} from '../flow/phases.js?v=1.5.6';
-import {endGame} from '../ui/retire.js?v=1.5.6';
+import {S} from '../core/state.js?v=2.0.11';
+import {R, ri, pick, chance, clamp, SEED} from '../core/rng.js?v=2.0.11';
+import {LV, PATHS, CPBL_TEAMS, NPB_TEAMS, MLB_TEAMS} from '../data/teams.js?v=2.0.11';
+import {AMA_ANNUAL, LEVEL_MIN_ANNUAL, MLB_SERVICE_MINOR_MIN} from '../data/economy.js?v=2.0.11';
+import {card, choose, board} from '../ui/dom.js?v=2.0.11';
+import {tlNote} from '../ui/timeline.js?v=2.0.11';
+import {ovr} from './ability.js?v=2.0.11';
+import {injuryMarketStatus} from './injury.js?v=2.0.11';
+import {hasActiveFranchise} from './tenure.js?v=2.0.11';
+import {seasonSalaryRating, currentSalaryRating} from './season.js?v=2.0.11';
+import {capTeam} from './career.js?v=2.0.11';
+import {traitCard, removeTrait} from '../flow/events.js?v=2.0.11';
+import {advance} from './draft.js?v=2.0.11';
+import {finishContractYear} from '../flow/phases.js?v=2.0.11';
+import {endGame} from '../ui/retire.js?v=2.0.11';
 export function pitcherContractCap(){ return ({SP:7,CL:5,MR:4})[S.role]||7; }
 /* 年薪（萬台幣）。頂級聯盟採漸進曲線：底薪貼近聯盟現況，明星價值才逐步拉開。 */
 export function hasMlbService(){
@@ -21,18 +21,53 @@ export function hasMlbService(){
 export function levelMinAnnual(lv){
   return /^R$|^A[123]$/.test(lv)&&hasMlbService()?MLB_SERVICE_MINOR_MIN:(LEVEL_MIN_ANNUAL[lv]||0);
 }
+/* 二刀流的轉折點拉到 22（見下面 salaryFor 的說明）。 */
+export const TW_KNEE=22;
 export function salaryFor(lv,d){
-  /* 只設最低值、不設最高值：歷史級種子應能持續刷新薪資紀錄。 */
-  const p=Math.max(0,d||0);
+  /* 不設硬上限，但轉折點以上只計 35%：歷史級種子仍可刷新紀錄，二次曲線不會失控衝破現實頂薪數倍。
+
+     二刀流的轉折點不一樣。原因是「二刀流薪水偏低」的真正出處在這裡，不在 twoWayD：
+     twoWayD 把弱側折算進來之後，二刀流的評價幾乎一定落在 15 以上，於是他多做的
+     那一份工作整份掉進被壓縮的區間，只計 35%。而中職這條公式根本沒有轉折點，
+     所以症狀只出現在日職與大聯盟——正好是二刀流最該被付錢的地方。
+     實測（日職 投16/打18）：單刀同強度 1億4,128萬、二刀流 1億7,080萬，只多兩成；
+     現實裡大谷的合約是頂級純打者的 1.75 倍。轉折點拉到 22 之後是 2億1,164萬（1.50 倍），
+     大聯盟同一組是 1.89 倍。弱側低的時候評價還在 15 以下，完全不受影響。 */
+  const raw=Math.max(0,d||0), knee=S.pos==='TW'?TW_KNEE:15;
+  const p=raw<=knee?raw:knee+(raw-knee)*0.35;
   switch(lv){
     case 'CPBL2':case 'NPB2':case 'R':case 'A1':case 'A2':case 'A3':return levelMinAnnual(lv);
-    case 'CPBL1':return Math.round(120+p*65+p*p*3);
-    case 'NPB1':return Math.round(360+p*210+p*p*14);
-    /* MLB 頂端刻意保留高成長：長期 MVP／歷史級球員可突破 20 億年薪。 */
-    case 'MLB':return Math.round(2400+p*1000+p*p*500);
+    case 'CPBL1':return Math.round(120+raw*65+raw*raw*3);
+    /* 日職中段貼近支配下球員平均，頂端可達現實本土巨星的 5～6 億日圓級距。 */
+    case 'NPB1':return Math.round(360+p*280+p*p*36);
+    /* MLB 中位仍受底薪與年資制度保護；長期 MVP／歷史級球員才進入 3,000～5,000 萬美元。 */
+    case 'MLB':return Math.round(2400+p*1400+p*p*600);
   } return 0;
 }
 export const fmtMoney=w=>{ const y=Math.floor(w/10000),m=Math.round(w%10000); return (y?y+'億':'')+(m?m.toLocaleString()+'萬':(y?'':'0萬')); };
+/* ───────── 合約金額的外幣參考值 ─────────
+   薪資系統從頭到尾都是台幣「萬」，這裡只負責在括號裡多寫一個當地幣別的數字，
+   純顯示、不參與任何計算——旅日簽約看到「5 億日圓」比「2 億 4,200 萬台幣」有感。
+   匯率是寫死的整數，刻意不跟真實匯率連動：同一份合約隔天回頭看，數字不該變，
+   而且這只是括號裡的參考值，沒有精確到小數點的必要——
+   1 美元 = 30 台幣、1 台幣 = 5 日圓（2026-09 的實際匯率約 31.98 與 4.85，取整好記）。
+   幣別看層級的 org：MiLB（含 1A~3A 與大聯盟）記美元、NPB 記日圓、中職不加註。 */
+export const FX={MiLB:{rate:30,unit:'美元'},NPB:{rate:0.2,unit:'日圓'}};
+export function fxNote(w,lv){
+  const f=FX[(LV[lv||S.lv]||{}).org];
+  if(!f||!(w>0))return '';
+  const v=w/f.rate;                       /* 換算後一樣以「萬」為單位 */
+  /* 日圓的數字很大，十五年約會來到四位數的「億」——那個量級再帶兩位小數只是雜訊，
+     所以破百億就取整數並加千分位（2,310億日圓），百億以下才留兩位（154.5億）。 */
+  const oku=v/10000;
+  const t=oku>=100?Math.round(oku).toLocaleString()+'億'
+         :oku>=1?(+oku.toFixed(2))+'億'
+         :v>=1?Math.round(v).toLocaleString()+'萬'
+         :(+v.toFixed(2))+'萬';
+  return `（約 ${t}${f.unit}）`;
+}
+/* 金額＋外幣註記。合約卡一律用這個，不要再直接串 fmtMoney。 */
+export const fmtMoneyFx=(w,lv)=>fmtMoney(w)+fxNote(w,lv);
 export function calcContractAnnual(lv,d,mult){
   return Math.round(Math.max(levelMinAnnual(lv),salaryFor(lv,d)*(mult||1)));
 }
@@ -53,10 +88,38 @@ export function contractAnnual(){
   if(S.ct)S.ct.annual=annual; /* 舊狀態第一次讀取時鎖定，後續年度不再隨成績浮動 */
   return annual;
 }
-export function makeContract(yrs,mult,lv,d,annual,extra){
+export function makeContract(yrs,mult,lv,d,annual,extra,kind){
   const m=mult||1,targetLv=lv||S.lv;
-  const pay=Math.round(Math.max(levelMinAnnual(targetLv),Number.isFinite(annual)?annual:calcContractAnnual(targetLv,d===undefined?currentSalaryRating(S.lastD||0):d,m)));
-  return Object.assign({yrs:yrs||1,mult:m,annual:pay},extra||{});
+  const rating=(d===undefined?currentSalaryRating(S.lastD||0):d);
+  const pay=Math.round(Math.max(levelMinAnnual(targetLv),Number.isFinite(annual)?annual:calcContractAnnual(targetLv,rating,m)));
+  const ct=Object.assign({yrs:yrs||1,mult:m,annual:pay},extra||{});
+  /* ── 生涯合約紀錄 ────────────────────────────────
+     在簽約的當下就把這份合約留檔，而不是事後從年薪反推。反推會在
+     「兩份金額相同又相鄰的單年約」等情況失真，而這份紀錄要拿來判斷
+     一張合約盤不盤，資料本身就必須跟遊戲當下完全一致。
+
+     market 是「同一個薪資評價在該層級的行情價」（mult=1）。
+     annual / market 就是這張合約相對行情的溢價倍率：
+       > 1 玩家賺到、= 1 照行情、< 1 被壓價。
+     rating 一併留著，之後要換別的判準也不必重跑。
+     純紀錄，不參與任何計算。 */
+  if(Array.isArray(S.contracts)){
+    /* id 讓每個球季能精準指回自己的合約。用「年薪相同」去配對是不可靠的：
+       升上一軍時 contractAnnual() 會用層級底薪墊高實付金額，同一份合約的
+       兩年就會出現不同數字；反過來兩份金額碰巧相同的單年約也會被併成一份。 */
+    const id=S.contracts.length+1; ct.__ctid=id;
+    S.contracts.push({
+      id, y:S.year, age:S.age, org:S.org, lv:targetLv, team:S.orgTeam||'',
+      yrs:ct.yrs, annual:pay, total:pay*ct.yrs, mult:m,
+      rating, market:calcContractAnnual(targetLv,rating,1),
+      kind:kind||'簽約', bonus:0,
+    });
+  }
+  return ct;
+}
+/* 最近一筆合約紀錄（簽約金要等報價流程結算完才知道，回頭補上）。 */
+export function lastContractRecord(){
+  return (Array.isArray(S.contracts)&&S.contracts.length)?S.contracts[S.contracts.length-1]:null;
 }
 /* 日美入札讓渡金（萬台幣）。以 1 美元＝30 台幣換算 MLB 制度的 2,500／5,000 萬美元級距。 */
 export function postingReleaseFee(guaranteed){
@@ -228,9 +291,9 @@ export function offseasonTradeCheck(cont){
 }
 export function doTradeExec(){
   /* 季末交易只更換下季球隊，當季成績仍完整歸屬原隊。 */
-  S.teamSeasons=0; S.teamYears=0; S.franchiseActive=false; S.champThisTeam=false; S.champTeam=null;
+  S.teamSeasons=0; S.teamYears=0; S.teamStarYears=0; S.franchiseActive=false; S.champThisTeam=false; S.champTeam=null;
   const list=S.org==='CPBL'?CPBL_TEAMS:S.org==='NPB'?NPB_TEAMS:MLB_TEAMS;
-  const nt=pick(list.filter(t=>t!==S.orgTeam)); S.orgTeam=nt; tlNote(2,'轉隊 '+nt); board(1);
+  const nt=pick(list.filter(t=>t!==S.orgTeam)); S.orgTeam=nt; rememberLeagueTeam(S.org,nt); tlNote(2,'轉隊 '+nt); board(1);
 }
 export function buyoutRemaining(rate,includeCurrent){ /* 合約剩餘年數給付:季前需包含尚未支付的當年度；季末則扣除已入帳年度。 */
   rate=rate||0.7;
@@ -245,7 +308,7 @@ export function buyoutRemaining(rate,includeCurrent){ /* 合約剩餘年數給�
   if(total>0){ S.salary+=total;
     if(rate>=1) card('gold','合約全額給付',`合約還有 <b class="hl">${remain} 年</b>，但這次不是你要走——球團主動終止合約，依約剩餘薪資<b class="hl">十成全額</b>給付，<b class="hl">${fmtMoney(total)}</b> 一次入帳。白紙黑字的長約，在此刻護住了你。`);
     else card('gold','合約買斷',`你仍在合約中，球團依約買斷剩餘 <b class="hl">${remain} 年</b>合約——雙方談定以 <b class="hl">七成</b> 價碼結清，<b class="hl">${fmtMoney(total)}</b> 一次入帳。合約精神，該給的一毛不少。`); }
-  S.ct=makeContract(1,S.ct.mult,S.lv,S.lastD||0,yearly); /* 給付後合約結清 */
+  S.ct=makeContract(1,S.ct.mult,S.lv,S.lastD||0,yearly,null,'買斷結清'); /* 給付後合約結清 */
   return total;
 }
 /* 引退時若沒回中職,補一場大巨蛋開球告別 */
@@ -263,13 +326,14 @@ export function handleDemotion(o,path,idx){
     let t=-1; for(let i=idx-1;i>=0;i--){ if(o>=LV[path[i]].min){t=i;break;} }
     if(t>=0){
       /* 旅外體系下放時,亞洲球團同步遞約 */
+      /* 跨聯盟的去處一律走母隊優先（returnTeam）：待過的聯盟 90% 是老東家把你接回去。 */
       const alts=[];
       if(S.org==='MiLB'){
-        if(o>=LV.NPB1.min&&chance(Math.round(60*ageGateJP())))alts.push({t:'跳槽日職一軍',s:'旅日合約',f:()=>{buyoutRemaining();signTo('NPB','NPB1');advance();}});
-        else if(o>=LV.NPB2.min&&chance(50))alts.push({t:'轉戰日職二軍（支配下）',f:()=>{buyoutRemaining();signTo('NPB','NPB2');advance();}});
-        if(o>=LV.CPBL1.min)alts.push({t:'返台加盟中職一軍',s:'落葉歸根',f:()=>{buyoutRemaining();signTo('CPBL','CPBL1');advance();}});
+        if(o>=LV.NPB1.min&&chance(Math.round(60*ageGateJP())))alts.push({t:'跳槽日職一軍',s:'旅日合約',f:()=>{buyoutRemaining();signTo('NPB','NPB1',returnTeam('NPB').team);advance();}});
+        else if(o>=LV.NPB2.min&&chance(50))alts.push({t:'轉戰日職二軍（支配下）',f:()=>{buyoutRemaining();signTo('NPB','NPB2',returnTeam('NPB').team);advance();}});
+        if(o>=LV.CPBL1.min)alts.push({t:'返台加盟中職一軍',s:'落葉歸根',f:()=>{buyoutRemaining();signTo('CPBL','CPBL1',returnTeam('CPBL').team);advance();}});
       }else if(S.org==='NPB'&&o>=LV.CPBL1.min&&chance(70)){
-        alts.push({t:'返台加盟中職一軍',f:()=>{buyoutRemaining();signTo('CPBL','CPBL1');advance();}});
+        alts.push({t:'返台加盟中職一軍',f:()=>{buyoutRemaining();signTo('CPBL','CPBL1',returnTeam('CPBL').team);advance();}});
       }
       if(alts.length){
         card('bad','降級通知',`成績未達標，球團打算將你下放 <b class="dn">${LV[path[t]].n}</b>——但消息一出，其他聯盟的邀請也到了。`);
@@ -299,26 +363,80 @@ export function handleDemotion(o,path,idx){
 export function outOfOrg(o){
   /* 遭原聯盟釋出，尋找重疊層級合約 */
   const offers=[];
-  if(S.org!=='NPB'&&o>=44)offers.push({t:'日職二軍（支配下）合約',f:()=>{buyoutRemaining(1);signTo('NPB','NPB2');}});
-  if(S.org!=='CPBL'){ if(o>=41)offers.push({t:'中職一軍合約',f:()=>{buyoutRemaining(1);signTo('CPBL','CPBL1');}});
-    else if(o>=30)offers.push({t:'中職二軍合約',f:()=>{buyoutRemaining(1);signTo('CPBL','CPBL2');}}); }
+  if(S.org!=='NPB'&&o>=44)offers.push({t:'日職二軍（支配下）合約',f:()=>{buyoutRemaining(1);signTo('NPB','NPB2',returnTeam('NPB').team);}});
+  if(S.org!=='CPBL'){ if(o>=41)offers.push({t:'中職一軍合約',f:()=>{buyoutRemaining(1);signTo('CPBL','CPBL1',returnTeam('CPBL').team);}});
+    else if(o>=30)offers.push({t:'中職二軍合約',f:()=>{buyoutRemaining(1);signTo('CPBL','CPBL2',returnTeam('CPBL').team);}}); }
   if(!offers.length){ buyoutRemaining(1); daibaFarewell(()=>endGame('遭球團釋出且無人問津，'+S.year+' 年黯然引退。')); return; }
   card('bad','戰力外通告',`未達 ${S.org==='NPB'?'日職':'原聯盟'}留用門檻，遭到釋出。所幸還有球隊捎來邀請——`);
   if(S.age>=33){ offers.push({t:'就此引退',warn:true,f:()=>{buyoutRemaining(1);daibaFarewell(()=>endGame('收到戰力外通告後，'+S.year+' 年選擇引退。'));}}); }
   choose('新東家的邀請',offers.map(x=>({...x,f:()=>{x.f();advance();}})));
 }
 export function teamListOf(org){ return org==='CPBL'?CPBL_TEAMS:org==='NPB'?NPB_TEAMS:MLB_TEAMS; }
-export function signTo(org,lv,team,yrs,mult,annual){
+function leagueKeyOf(org){ return org==='CPBL'?'CPBL':org==='NPB'?'NPB':org==='MiLB'||org==='MLB'?'MLB':null; }
+function rememberLeagueTeam(org,team){
+  const key=leagueKeyOf(org); if(!key||!team||!teamListOf(org).includes(team))return;
+  const last=S.lastLeagueTeam||(S.lastLeagueTeam={CPBL:null,NPB:null,MLB:null});
+  last[key]=team;
+  if(key==='CPBL')S.lastCpblTeam=team; /* 保留舊欄位，讓既有流程與舊資料仍能相容。 */
+}
+export function signTo(org,lv,team,yrs,mult,annual,quiet){
   const sourceLv=S.lastLv||S.lv,contractD=ratingAtLevel(currentSalaryRating(S.lastD||0),sourceLv,lv);
+  /* 跨國前先記住離開當下的最後一隊；同聯盟轉隊則會在簽約後改記新東家。 */
+  rememberLeagueTeam(S.org,S.orgTeam);
   S.org=org; S.lv=lv;
   /* 【修正】先決定新球隊是誰，比對不一樣才把年資歸零，最後再蓋掉 S.orgTeam */
   const newTeam = team || pick(teamListOf(org));
-  if(newTeam !== S.orgTeam){ S.teamSeasons=0; S.teamYears=0; S.franchiseActive=false; S.champThisTeam=false; S.champTeam=null; tlNote(2,'加盟 '+newTeam); }
+  if(newTeam !== S.orgTeam){ S.teamSeasons=0; S.teamYears=0; S.teamStarYears=0; S.franchiseActive=false; S.champThisTeam=false; S.champTeam=null; tlNote(2,'加盟 '+newTeam); }
   S.orgTeam = newTeam;
-  if(org==='CPBL')S.lastCpblTeam=newTeam;
-  S.ct=makeContract(yrs||2,mult||1,lv,contractD,annual);
+  rememberLeagueTeam(org,newTeam);
+  S.ct=makeContract(yrs||2,mult||1,lv,contractD,annual,null,'簽約');
   if(org!=='NPB')S.npbYears=0;
-  card('info','簽約',`與 <b class="hl">${S.teamName()}</b> 簽下固定年薪 <b class="hl">${fmtMoney(S.ct.annual)}</b> × <b class="hl">${S.ct.yrs} 年</b>，合約薪資總額 <b class="hl">${fmtMoney(S.ct.annual*S.ct.yrs)}</b>。`); board(2);
+  /* quiet：呼叫端自己會寫一張更完整的卡（旅外回歸），這裡就不要再印一張制式簽約卡。 */
+  if(!quiet)card('info','簽約',`與 <b class="hl">${S.teamName()}</b> 簽下固定年薪 <b class="hl">${fmtMoneyFx(S.ct.annual)}</b> × <b class="hl">${S.ct.yrs} 年</b>，合約薪資總額 <b class="hl">${fmtMoneyFx(S.ct.annual*S.ct.yrs)}</b>。`);
+  board(2);
+}
+/* ---------- 旅外回歸：母隊優先 ---------- */
+/* 「母隊」＝離開該聯盟、前往更高階海外聯盟前效力的最後一隊，不是第一隊或待最久的隊。
+   回得去不代表回得成——合約金額與角色定位談不攏
+   在現實裡本來就常見，所以只有 90% 談成，另外 10% 會輾轉加盟同聯盟的其他球隊。
+   沒有母隊（第一次到那個聯盟）就不套這條規則，照舊隨機找東家。 */
+function lastLoggedTeam(org){
+  const wanted=org==='CPBL'?'CPBL':org==='NPB'?'NPB':'MiLB', teams=teamListOf(org), rows=S.log||[];
+  for(let i=rows.length-1;i>=0;i--){
+    const row=rows[i]||{}, info=LV[row.lv];
+    if(!info||info.org!==wanted)continue;
+    const name=String(row.tm||''), team=teams.find(t=>name.startsWith(t));
+    if(team)return team;
+  }
+  return null;
+}
+export function homeTeamOf(org){
+  const key=leagueKeyOf(org), remembered=S.lastLeagueTeam&&S.lastLeagueTeam[key];
+  /* lastLoggedTeam 讓更新前已在旅外途中的資料，也能由逐年紀錄找回真正的最後一隊。 */
+  const t=remembered||lastLoggedTeam(org)||(org==='CPBL'?S.lastCpblTeam:null)||capTeam(key);
+  return (t&&teamListOf(org).includes(t))?t:null;
+}
+export function returnTeam(org){
+  const home=homeTeamOf(org);
+  if(home&&chance(90))return {team:home,home,back:true};
+  const others=teamListOf(org).filter(t=>t!==home);
+  return {team:pick(others.length?others:teamListOf(org)),home,back:false};
+}
+const LEAGUE_OF={CPBL:'中職',NPB:'日職',MiLB:'大聯盟'};
+/* 從 from 聯盟回到 org 聯盟並簽約。intro 是「為什麼回來」，簽完再依有沒有回到母隊寫結果。 */
+export function returnHomeSign(from,org,lv,intro,o){
+  const dest=(o&&o.dest)||returnTeam(org), lg=LEAGUE_OF[org]||'', fromN=LEAGUE_OF[from]||'海外';
+  if(intro)card('info','長考',intro);
+  signTo(org,lv,dest.team,o&&o.yrs,o&&o.mult,o&&o.annual,true);
+  const ct=S.ct, detail=`固定年薪 <b class="hl">${fmtMoneyFx(ct.annual)}</b> × <b class="hl">${ct.yrs} 年</b>（合約總額 <b class="hl">${fmtMoneyFx(ct.annual*ct.yrs)}</b>）`;
+  const heroN=S.pos==='P'?'王牌':'第四棒';
+  if(dest.back){
+    card('gold','回歸母隊',`從 <b class="hl">${fromN}</b> 回歸，你決定重返母隊 <b class="hl">${dest.team}</b>，而 ${dest.team} 也敞開雙臂歡迎你。球迷們無不引頸期盼你的回歸——無論你在海外的成就如何，在他們眼中，你都還是那個離開前的${heroN}。${dest.team} 以${detail}簽下你，讓你繼續在這片熟悉的紅土上，寫完屬於 ${dest.team} 的傳奇。`);
+  }else if(dest.home){
+    card('info','輾轉加盟',`從 <b class="hl">${fromN}</b> 旅外回歸，原本你要重返在${lg}的母隊 <b class="dn">${dest.home}</b>，但在談判過程中，雙方在合約金額以及角色定位上始終有所歧異，最後你沒有辦法重返母隊。輾轉之間，<b class="hl">${dest.team}</b> 遞出了報價——你以${detail}加入 ${dest.team}，在另一座球場重新開始。`);
+  }else{
+    card('info','新東家',`<b class="hl">${dest.team}</b> 以${detail}簽下你，你將在${LV[lv].n}展開全新的一章。`);
+  }
 }
 /* 多隊報價選擇:opts=[{team,bonus,yrs,mult,lv}] */
 export function pickOfferUI(title,org,offers,after){
@@ -328,6 +446,7 @@ export function pickOfferUI(title,org,offers,after){
       s:`簽約金 ${fmtMoney(of.bonus)}｜固定年薪 ${fmtMoney(annual)} × ${of.yrs} 年｜合約薪資總額 ${fmtMoney(annual*of.yrs)}`,
       f:()=>{ S.salary+=of.bonus;
         signTo(org,lv,of.team,of.yrs,of.mult||1,annual);
+        const rec=lastContractRecord(); if(rec)rec.bonus=of.bonus;
         card('gold','簽約金',`入袋 <b class="hl">${fmtMoney(of.bonus)}</b>。`); after(); }
     };
   }));
@@ -357,10 +476,27 @@ export function termEstimate(lv,d,offerMult,profile,franchisePremium){
   const line=(y,m)=>{ const annual=calcContractAnnual(lv,mp.rating,+(m*bm).toFixed(2)); return `${fmtMoney(annual)}×${y}年＝${fmtMoney(annual*y)}`; };
   return tp.longEligible?`長約 ${line(tp.longY,tp.longM)}／短約 ${line(tp.shortY,tp.shortM)}`:`${mp.proveIt?'證明約':'短約'} ${line(tp.shortY,tp.shortM)}`;
 }
-export function termChoice(o,d,baseTitle,onPick,onReject,rejectLabel,rejectDesc,offerMult,franchisePremium){
+export function protectExtensionOffer(y,annual,minGuaranteedTotal,guaranteedYears){
+  const years=Math.max(1,Math.round(y||1)), rawAnnual=Math.max(0,Math.round(annual||0));
+  const oldTotal=Math.max(0,Math.round(minGuaranteedTotal||0)), oldYears=Math.max(0,Math.round(guaranteedYears||0));
+  /* 舊約保障完整保留；延長出去的每一年，至少再加上新估值的一年薪資。 */
+  const floorTotal=oldTotal+rawAnnual*Math.max(0,years-oldYears);
+  const protectedAnnual=Math.max(rawAnnual,Math.ceil(floorTotal/years));
+  return {annual:protectedAnnual,total:protectedAnnual*years};
+}
+export function remainingContractGuarantee(){
+  if(!S.ct)return 0;
+  const yrs=Math.max(0,Math.round(S.ct.yrs||0)); if(!yrs)return 0;
+  const floor=levelMinAnnual(S.lv), schedule=S.ct.annualSchedule;
+  if(schedule&&schedule.length>=yrs)return schedule.slice(0,yrs).reduce((sum,v)=>sum+Math.max(floor,Math.round(v||0)),0);
+  return contractAnnual()*yrs;
+}
+export function termChoice(o,d,baseTitle,onPick,onReject,rejectLabel,rejectDesc,offerMult,franchisePremium,extensionProtection){
   const mp=contractMarketProfile(d), tp=termParams(d,S.lv,mp,franchisePremium);
   const now=contractAnnual(), baseMult=offerMult||1;
-  const offer=(y,m)=>{ const actualMult=+(m*baseMult).toFixed(2), annual=calcContractAnnual(S.lv,mp.rating,actualMult); return {y,m:actualMult,annual,total:annual*y}; };
+  const offer=(y,m)=>{ const actualMult=+(m*baseMult).toFixed(2), rawAnnual=calcContractAnnual(S.lv,mp.rating,actualMult);
+    const protectedPay=protectExtensionOffer(y,rawAnnual,extensionProtection&&extensionProtection.total,extensionProtection&&extensionProtection.years);
+    return {y,m:actualMult,annual:protectedPay.annual,total:protectedPay.total}; };
   const describe=x=>`固定年薪 <b>${fmtMoney(x.annual)}</b> × ${x.y} 年｜合約總額 <b>${fmtMoney(x.total)}</b>`;
   const opts=[];
   if(tp.longEligible){ /* 夠格才給長約選項 */
@@ -376,21 +512,30 @@ export function termChoice(o,d,baseTitle,onPick,onReject,rejectLabel,rejectDesc,
   }
   if(onReject)opts.push({t:rejectLabel||'拒絕，維持現狀',s:rejectDesc||'不接受這份合約',f:onReject});
   const health=mp.label?`｜<span class="dn">${mp.label}</span>`:'';
-  choose(`${baseTitle}<div style="margin-top:8px;color:var(--dim);font-size:13px">目前年薪：<b class="hl">${fmtMoney(now)}</b>｜市場依最近三季加權估值${health}</div>`,opts);
+  const guarantee=extensionProtection&&extensionProtection.total?`｜原約剩餘保障：<b class="hl">${fmtMoney(extensionProtection.total)}</b>`:'';
+  /* 大標到「目前年薪」之前為止（摺疊列只取 .ev-h），年薪／保障／市場備註走小標。
+     原本兩段在同一個字串裡，textContent 會把它們黏成一長串印在摺疊列上。 */
+  choose(`<span class="ev-h">${baseTitle}</span>`+
+    `<small>目前年薪：<b class="hl">${fmtMoney(now)}</b>${guarantee}｜市場依最近三季加權估值${health}</small>`,opts);
 }
 /* 母隊延長續約:提前綁約 */
 export function extensionOffer(o){
   const d=S.lastD||0;
+  const remainingYears=Math.max(0,S.ct&&S.ct.yrs||0), mp=contractMarketProfile(d), tp=termParams(d,S.lv,mp);
+  const maxOfferedYears=Math.max(tp.longEligible?tp.longY:0,tp.shortY);
+  /* 新約若沒有增加任何保障年限，就只是拿新估值覆蓋舊約，不應包裝成提前延長。 */
+  if(maxOfferedYears<=remainingYears){ crossOffers(o); return; }
+  const remainingGuarantee=remainingContractGuarantee();
   termChoice(o,d,`母隊提前延長續約 · ${S.teamName()}（原合約剩 1 年）`,(y,m,annual,total)=>{
     const effectiveYear=S.year+1, team=S.teamName();
     /* 提前續約直接覆蓋剩餘舊約；下一球季起領新約，不額外多綁舊約年數。 */
-    S.ct=makeContract(y,m,S.lv,d,annual,{extOffered:true});
-    card('gold','延長續約',`為了提前留下你，<b class="hl">${team}</b>決定提前續約，開了一筆固定年薪 <b class="hl">${fmtMoney(annual)}</b> × <b class="hl">${y} 年</b>的新約（合約總額 <b class="hl">${fmtMoney(total)}</b>），並且從 <b class="hl">${effectiveYear} 年</b>生效！`); board(1);
+    S.ct=makeContract(y,m,S.lv,d,annual,{extOffered:true},'延長合約');
+    card('gold','延長續約',`為了提前留下你，<b class="hl">${team}</b>決定提前續約，開了一筆固定年薪 <b class="hl">${fmtMoneyFx(annual)}</b> × <b class="hl">${y} 年</b>的新約（合約總額 <b class="hl">${fmtMoneyFx(total)}</b>），並且從 <b class="hl">${effectiveYear} 年</b>生效！`); board(1);
     crossOffers(o);
   }, ()=>{ /* 拒絕延長:維持原合約繼續跑 */
     card('info','婉拒延長',`你婉拒了母隊的提前延長，選擇打完現有合約再說。`);
     crossOffers(o);
-  });
+  },undefined,undefined,undefined,undefined,{total:remainingGuarantee,years:remainingYears});
 }
 /* ---------- FA 自由球員 ---------- */
 export function faFlow(o){
@@ -403,13 +548,23 @@ export function faFlow(o){
   const faOpts=[
     {t:`與 ${S.teamName()} 續約`,main:true,s:'接著選擇長約或短約',
      f:()=>termChoice(o,d,`與 ${S.teamName()} 續約 · 選擇合約類型`,(y,m,annual,total)=>{
-       S.ct=makeContract(y,m,S.lv,d,annual,{extOffered:false});
-       card('info','續約',`與 <b class="hl">${S.teamName()}</b> 完成續約：固定年薪 <b class="hl">${fmtMoney(annual)}</b> × <b class="hl">${y} 年</b>，合約總額 <b class="hl">${fmtMoney(total)}</b>。`); advance(); })},
+       S.ct=makeContract(y,m,S.lv,d,annual,{extOffered:false},'延長合約');
+       card('info','續約',`與 <b class="hl">${S.teamName()}</b> 完成續約：固定年薪 <b class="hl">${fmtMoneyFx(annual)}</b> × <b class="hl">${y} 年</b>，合約總額 <b class="hl">${fmtMoneyFx(total)}</b>。`); advance(); })},
     {t:'跳出合約，測試自由市場',warn:true,s:'成績不佳可能乏人問津，只能回原隊減薪',f:()=>faMarket(o,d)}];
-  /* 5a 旅外球員合約到期:多一個返台加盟中職的選項(落葉歸根) */
+  /* 5a 大聯盟合約走完:能力還撐得住日職一軍的話,亞洲最高殿堂也是一條路。
+     faFlow 只在 LV[S.lv].top 時才會跑,所以 S.org==='MiLB' 這裡必定是大聯盟。 */
+  if(S.org==='MiLB'&&o>=LV.NPB1.min){
+    faOpts.push({t:'轉戰日職一軍',s:'把天賦帶回亞洲職棒的最高殿堂',
+      f:()=>{ returnHomeSign('MiLB','NPB','NPB1',
+        `雖然大聯盟的合約書就攤在桌上，但在幾個輾轉難眠的夜裡，你還是把筆放了下來。橫越太平洋的十幾個小時、一年有兩百天在陌生的旅館醒來——你想的已經不是可以在大聯盟達成甚麼成就，而是離家近一點。長考之後，你決定把天賦帶回亞洲職棒的最高殿堂：<b class="hl">日本職棒</b>。`);
+        advance(); }});
+  }
+  /* 5b 旅外球員合約到期:多一個返台加盟中職的選項(落葉歸根) */
   if(S.org!=='CPBL'&&o>=LV.CPBL1.min){
     faOpts.push({t:'返台加盟中職一軍',s:'落葉歸根，回到熟悉的主場',
-      f:()=>{ signTo('CPBL','CPBL1'); card('good','返鄉',`結束海外的挑戰，你選擇回到 <b class="hl">${S.teamName()}</b>，在家鄉球迷面前繼續揮灑。`); advance(); }});
+      f:()=>{ returnHomeSign(S.org,'CPBL','CPBL1',
+        `結束海外的挑戰，你把行李箱從衣櫃頂端搬了下來。護照上那些出入境章記錄了你走過的地方，但這一次，飛機降落的是熟悉的桃園機場。你決定回到家鄉球迷面前，把剩下的棒球打完。`);
+        advance(); }});
   }
   choose(`合約到期 · 取得自由球員（FA）資格（球隊奪冠率 ${teamChampRate(S.orgTeam)}%）`,faOpts);
 }
@@ -422,13 +577,16 @@ export function marketRetirementText(){
 export function retireFromMarket(){ daibaFarewell(()=>endGame(marketRetirementText())); }
 export function homecomingAfterRejectedOffer(o){
   const homeLv=o>=LV.CPBL1.min?'CPBL1':'CPBL2';
-  const homeTeam=S.lastCpblTeam||capTeam('CPBL')||pick(CPBL_TEAMS);
+  /* 先擲好去哪一隊,按鈕才寫得出隊名——90% 回母隊,10% 談不攏改投他隊(見 returnTeam)。 */
+  const dest=returnTeam('CPBL');
   const annual=calcContractAnnual(homeLv,marketRating(S.lastD||0,homeLv),1);
+  const from=S.org;
   choose(`落葉歸根 · 球團評估從${LV[homeLv].n}出發`,[
-    {t:`返台加盟 ${homeTeam}（${LV[homeLv].n}）`,main:true,
+    {t:`返台加盟 ${dest.team}（${LV[homeLv].n}）`,main:true,
       s:`綜合 ${o}｜一軍門檻 ${LV.CPBL1.min}｜固定年薪 ${fmtMoney(annual)} × 1 年`,f:()=>{
-        signTo('CPBL',homeLv,homeTeam,1,1,annual);
-        card('good','落葉歸根',`你婉拒了海外合約，選擇回到 <b class="hl">${homeTeam}</b>，並從 <b class="hl">${LV[homeLv].n}</b>重新出發。`);
+        returnHomeSign(from,'CPBL',homeLv,
+          `你婉拒了海外的合約，把球具收一收，決定回到出發的地方，從 <b class="hl">${LV[homeLv].n}</b>重新開始。`,
+          {dest,yrs:1,mult:1,annual});
         advance(); }},
     {t:'就此引退',warn:true,s:'不再簽下新合約，結束球員生涯',f:retireFromMarket}
   ]);
@@ -466,7 +624,7 @@ export function faMarket(o,d,settings){
     const fallbackAnnual=calcContractAnnual(S.lv,mp.rating,+(0.70*mp.aav).toFixed(2));
     choose('沒有球隊開價',[
       {t:`回 ${S.teamName()} 減薪簽約`,main:true,s:`固定年薪 ${fmtMoney(fallbackAnnual)} × 1 年｜合約總額 ${fmtMoney(fallbackAnnual)}`,
-       f:()=>{ S.ct=makeContract(1,0.7,S.lv,mp.rating,fallbackAnnual); card('bad','減薪合約',`低著頭回到 <b class="hl">${S.teamName()}</b>，簽下固定年薪 <b class="hl">${fmtMoney(S.ct.annual)}</b>的一年約。`); advance(); }},
+       f:()=>{ S.ct=makeContract(1,0.7,S.lv,mp.rating,fallbackAnnual,null,'減薪合約'); card('bad','減薪合約',`低著頭回到 <b class="hl">${S.teamName()}</b>，簽下固定年薪 <b class="hl">${fmtMoney(S.ct.annual)}</b>的一年約。`); advance(); }},
       {t:'就此引退',warn:true,f:()=>endGame('FA 市場乏人問津，'+S.year+' 年黯然引退。')}]);
     return;
   }
@@ -498,8 +656,9 @@ export function faMarket(o,d,settings){
   const finalOpt=cold
     ?{t:'就此引退',warn:true,s:'不接受任何報價，結束球員生涯',f:retireFromMarket}
     :{t:`回原隊（${S.teamName()}）1 年約`,s:`固定年薪 ${fmtMoney(calcContractAnnual(S.lv,mp.rating,+(0.90*mp.aav).toFixed(2)))} × 1 年｜合約總額 ${fmtMoney(calcContractAnnual(S.lv,mp.rating,+(0.90*mp.aav).toFixed(2)))}`,
-      f:()=>{ const annual=calcContractAnnual(S.lv,mp.rating,+(0.90*mp.aav).toFixed(2)); S.ct=makeContract(1,0.9,S.lv,mp.rating,annual); card('info','回歸',`重回 <b class="hl">${S.teamName()}</b>，固定年薪 <b class="hl">${fmtMoney(S.ct.annual)}</b>。`); advance(); }};
-  choose(`${cold?'球團冷處理後的':'自由市場'}報價一覽（依國家分列）<div style="margin-top:8px;color:var(--dim);font-size:13px">目前年薪：<b class="hl">${fmtMoney(contractAnnual())}</b>${mp.label?`｜<span class="dn">${mp.label}</span>`:''}</div>`,[...offerOpts,finalOpt]);
+      f:()=>{ const annual=calcContractAnnual(S.lv,mp.rating,+(0.90*mp.aav).toFixed(2)); S.ct=makeContract(1,0.9,S.lv,mp.rating,annual,null,'折衷續約'); card('info','回歸',`重回 <b class="hl">${S.teamName()}</b>，固定年薪 <b class="hl">${fmtMoney(S.ct.annual)}</b>。`); advance(); }};
+  choose(`<span class="ev-h">${cold?'球團冷處理後的':'自由市場'}報價一覽（依國家分列）</span>`+
+    `<small>目前年薪：<b class="hl">${fmtMoney(contractAnnual())}</b>${mp.label?`｜<span class="dn">${mp.label}</span>`:''}</small>`,[...offerOpts,finalOpt]);
 }
 export function ageGateUSA(o,minReq){ /* 旅美/日職跳大聯盟:年齡越大越難,28 歲後幾乎關窗 */
   const age=S.age;
@@ -519,6 +678,14 @@ export function ageGateJP(){ /* 旅日:窗口寬,31 歲(衰退前)都還有機�
   if(age<=31)return 0.25;
   return 0; /* 32 歲起(進入衰退)關窗 */
 }
+export function cpblUsaOfferChance(o,age){
+  /* 中職旅美同時看年齡與綜合評價：年輕球員有培養價值，大齡怪物級戰力仍有被看見的機會。 */
+  const a=Number.isFinite(age)?age:S.age;
+  if(o<57||a>=33)return 0; /* 32 歲是最後窗口，33 歲起關窗 */
+  const base=a<=22?30:a<=24?25:a<=26?20:a<=28?15:a<=30?10:a<=31?6:3;
+  const abilityMult=o>=70?2:o>=65?1.5:o>=60?1:0.75;
+  return Math.min(40,Math.round(base*abilityMult));
+}
 export function rollCpblCrossOffers(o,d,rollJP,rollUSA){
   /* 先獨立完成兩國判定，再組合畫面；日職抽中不再阻斷旅美判定。 */
   const jp=o>=53&&d>=1&&!!rollJP();
@@ -532,7 +699,7 @@ export function crossOffers(o){
   const priceBid=(of,lv)=>{ const target=contractMarketProfile(S.lastD||0,lv);
     of.bonus=Math.round(of.bonus*target.bonus); of.annual=calcContractAnnual(lv,target.rating,+(target.aav*(0.97+R()*0.08)).toFixed(2)); return of; };
   if(S.lv==='CPBL1'){
-    const jpP=Math.round(35*ageGateJP()),usaP=Math.round(30*ageGateUSA(o,57));
+    const jpP=Math.round(35*ageGateJP()),usaP=cpblUsaOfferChance(o,S.age);
     const hits=rollCpblCrossOffers(o,S.lastD||0,
       ()=>jpP>0&&chance(jpP),
       ()=>usaP>0&&chance(usaP));

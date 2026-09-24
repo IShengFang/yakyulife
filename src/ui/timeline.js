@@ -1,5 +1,5 @@
-import {S, stageLabel} from '../core/state.js?v=1.5.6';
-import {$, card, _curYearBody} from './dom.js?v=1.5.6';
+import {S, stageLabel} from '../core/state.js?v=2.0.11';
+import {$, card, _curYearBody} from './dom.js?v=2.0.11';
 
 /* ================= 生涯時間軸(純呈現層,不觸碰 RNG) ================= */
 export let TL=[];
@@ -36,14 +36,14 @@ export function renderTimeline(){
     TL.forEach((e,i)=>{
       if(e.stage!==cur){ if(cur!==null)html+='</div>'; html+=`<div class="tlg"><div class="tlg-h">${e.stage}</div>`; cur=e.stage; }
       const now=i===TL.length-1, gone=!(e.el&&e.el.isConnected);
-      html+=`<div class="tl-item${now?' now':''}${(gone&&!now)?' gone':''}" data-i="${i}"><span class="dot"></span><span class="t">${e.year} ${e.lab}${e.note?' <b>'+e.note+'</b>':''}</span></div>`;
+      html+=`<div class="tl-item${now?' now':''}${(gone&&!now)?' gone':''}" data-i="${i}" role="button" tabindex="0"><span class="dot"></span><span class="t">${e.year} ${e.lab}${e.note?' <b>'+e.note+'</b>':''}</span></div>`;
     });
     if(cur!==null)html+='</div>';
     list.innerHTML='<div id="tl-wrap">'+html+'</div>';
     list.scrollTop=list.scrollHeight; /* keep the newest year in view */
   }
   if(strip){
-    strip.innerHTML=TL.map((e,i)=>`<span class="tl-chip${i===TL.length-1?' now':''}" data-i="${i}">${e.year}${e.note?'★':''}</span>`).join('');
+    strip.innerHTML=TL.map((e,i)=>`<span class="tl-chip${i===TL.length-1?' now':''}" data-i="${i}" role="button" tabindex="0">${e.year}${e.note?'★':''}</span>`).join('');
     strip.scrollLeft=strip.scrollWidth;
   }
 }

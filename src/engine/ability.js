@@ -1,9 +1,9 @@
-import {S} from '../core/state.js?v=1.5.6';
-import {R, ri, chance, clamp} from '../core/rng.js?v=1.5.6';
-import {ABL, POS_AB, DPN, DP_TH, DP_BAR, POS_ADJ_RUNS, DP_RANK} from '../data/abilities.js?v=1.5.6';
-import {LV} from '../data/teams.js?v=1.5.6';
-import {card, choose, board} from '../ui/dom.js?v=1.5.6';
-import {roleN, pitcherRole} from './season.js?v=1.5.6';
+import {S} from '../core/state.js?v=2.0.11';
+import {R, ri, chance, clamp} from '../core/rng.js?v=2.0.11';
+import {ABL, POS_AB, PITCH_TOOLS, DPN, DP_TH, DP_BAR, POS_ADJ_RUNS, DP_RANK} from '../data/abilities.js?v=2.0.11';
+import {LV} from '../data/teams.js?v=2.0.11';
+import {card, choose, board} from '../ui/dom.js?v=2.0.11';
+import {roleN, pitcherRole, bullpenRole} from './season.js?v=2.0.11';
 export function dpScore(p){ const a=S.ab;
   switch(p){
     case 'SS': return a.rng*0.5 + a.fld*0.3 + a.arm*0.2;   /* 游擊:範圍主導 */
@@ -64,15 +64,22 @@ export function dposReview(cont){
     if(S.dpos==='1B'&&!dpQual('1B')){ S.dpos='DH';
       card('info','守位調整','連一壘都站不住了，新球季登錄為<b class="hl">指定打擊</b>。'); }
     cont(); return; }
-  if(S.pos==='P'){ /* 體力決定投手類型;牛棚→先發需玩家同意,先發→牛棚仍自動 */
+  if(S.pos==='P'||S.pos==='TW'){ /* 體力決定投手類型;牛棚→先發需玩家同意,先發→牛棚仍自動 */
+    /* 二刀流不投球的日子固定 DH(newState 建立時就設好了,這裡只是防舊存檔/中途轉入)。
+       守位這一段對它沒有意義,但投手定位那一段照跑——它同時需要 role 與 dpos。 */
+    if(S.pos==='TW')S.dpos='DH';
     const nr=pitcherRole(), old=S.role;
     if((old==='MR'||old==='CL')&&nr==='SP'){
       /* 後援投手體力練上先發線:球團徵詢,不強制轉 */
+      const reliefRole=bullpenRole();
       choose('球團徵詢：你的體力已達先發水準，要轉任先發嗎？',[
         {t:'轉任先發，扛起輪值',main:true,f:()=>{ S.role='SP';
           card('info','定位調整',`你點頭接下先發任務。新球季起，你是輪值的一員——<b class="hl">先發</b>。`); cont(); }},
-        {t:'留在牛棚，守住我的位置',s:'維持'+roleN(old)+'定位',f:()=>{ S.role=old;
-          card('info','留守牛棚',`你婉拒了教練團的提議——永遠準備待命，在球隊最需要我的時候，登板救火。`); cont(); }}]);
+        {t:'留在牛棚，守住我的位置',s:(reliefRole===old?'維持':'調整為')+roleN(reliefRole)+'定位',f:()=>{ S.role=reliefRole;
+          const msg=reliefRole===old
+            ?'你婉拒了教練團的提議——永遠準備待命，在球隊最需要我的時候，登板救火。'
+            :`你婉拒先發任務；教練團依上季表現，將你登錄為 <b class="hl">${roleN(reliefRole)}</b>。`;
+          card('info',reliefRole===old?'留守牛棚':'定位調整',msg); cont(); }}]);
       return;
     }
     S.role=nr;
@@ -113,10 +120,57 @@ export function toolGap(){ const a=S.ab;
   /* 對照角色:代打看力量/Contact 哪個高決定文案來源 */
   const role=topDim[2];
   return {gap, role, val:topDim[1], dim:topDim[0]}; }
+/* ---------- 兩側各自的評價 ----------
+   二刀流要分別知道「當投手值多少」與「當打者值多少」:ovr() 要合併它們，
+   強制轉回的門檻(任一側 < LV[lv].min − 10)也要逐側判定。 */
+export function ovrPit(){ const a=S.ab, arr=[a.vel,a.ctl,a.brk].sort((x,y)=>y-x);
+  return arr[0]*0.42+arr[1]*0.30+arr[2]*0.18+a.sta*0.10; }
+export function ovrBat(){ const a=S.ab, off=[a.con,a.pow,a.eye,a.spd].sort((x,y)=>y-x);
+  const offv=off[0]*0.38+off[1]*0.27+off[2]*0.20+off[3]*0.15;
+  /* 二刀流沒有守備工具，打擊側比照「指定打擊」計價:守備權重 0.12 給一個固定的低檔手套值
+     (26 ≈ 一般 DH 的 dpScore('1B')−12)。這樣它跟真正 DH 的 ovr 是同一把尺，
+     強制轉回的門檻在投打兩側才量得出同樣的意思。 */
+  return offv*0.88+26*0.12; }
+/* 二刀流綜評的三個常數，見 ovr() 裡的說明。 */
+export const TW_REPL=45, TW_WEAK=0.45, TW_CAP=16;
 export function ovr(){
   const a=S.ab;
-  if(S.pos==='P'){ const arr=[a.vel,a.ctl,a.brk].sort((x,y)=>y-x);
-    return Math.round(arr[0]*0.42+arr[1]*0.30+arr[2]*0.18+a.sta*0.10); }
+  if(S.pos==='P')return Math.round(ovrPit());
+  if(S.pos==='TW'){
+    /* 二刀流佔一個名額卻做兩份工：強側全額計分，弱側按「替代水準以上的部分」折算後
+       相加。式子的形狀從一開始就是對的，壞掉的是三個常數（2026-09 重算）：
+
+       ── 為什麼要重算 ──
+       玩家回饋「速度選球加不了綜評，感覺變雞肋了」。量下來比回饋更嚴重：
+       把弱側從收斂線一路練到 p95，綜評總共只漲 中職 +3／日職 +2／大聯盟 +1。
+
+       關鍵是先量清楚玩家實際落在哪裡（tools/sim-twoway.mjs 的 SIDES=1，
+       10 萬個職業球季）。結論是兩側幾乎永遠平衡——收斂判定會砍掉落後的一側、
+       訓練骰又是共用的，所以養不出偏科的二刀流：
+         中職一軍  ovrPit p25/p50/p95 = 47.1/51.2/60.0　ovrBat = 46.7/50.7/59.7
+         日職一軍               54.4/58.2/64.9                54.1/57.6/63.9
+         大聯盟                 59.5/61.0/63.0                59.4/60.8/63.1
+
+       舊的替代線 35 遠低於這個區間，弱側減完 35 全都是 19~30 的大數字，
+       再乘 0.15 之後整段區間的加成只從 2.9 變到 4.5——等於一個常數。
+       上限 8 也碰不到：能力全滿時弱側最多 73.5，加成也才 5.8。
+
+       ── 新常數 ──
+       TW_REPL 45：壓在中職一軍操作區間的下緣，讓加成在玩家真的待的地方有變化空間。
+       TW_WEAK 0.45：斜率放大三倍。
+       TW_CAP 16：能力全滿（弱側 73.5）時 +12.8，上限留一點餘裕但不再是裝飾。
+       選這組而不是更兇的，是因為中位數幾乎不動（中職 54→54、日職 62→64），
+       只把斜率拉開——ovr 會餵給選秀順位、升降級、國際賽徵召（52／55）、
+       明星判定（par+4）與冠軍率，基準線一動那些門檻會連鎖鬆開。
+       實測結果見 CHANGELOG。
+
+       弱側崩掉時加成歸零，評價自然收斂回 max()，強制轉回的當下不會出現斷崖——
+       這個性質跟舊版一樣，是刻意保留的。 */
+    const p=ovrPit(), b=ovrBat();
+    let v=Math.round(Math.max(p,b)+clamp((Math.min(p,b)-TW_REPL)*TW_WEAK,0,TW_CAP));
+    if(S.traits.yips)v-=3;
+    return v;
+  }
   const off=[a.con,a.pow,a.eye,a.spd].sort((x,y)=>y-x);
   const offv=off[0]*0.38+off[1]*0.27+off[2]*0.20+off[3]*0.15;
   /* 守備分:用當前守位的 dpScore(與守位門檻系統一致);DH 無守備價值 → 以「1B 守備分 −12」計(確保同打擊下 1B 恆 > DH);未定守位則取最佳可守守位的分 */
@@ -130,10 +184,17 @@ export function ovr(){
 }
 export function playerType(){
   const a=S.ab;
+  const decliningVeteran=S.stage==='PRO'&&(S.age-(S.traits.disc?2:0))>=32;
   if(S.traits.onetool&&S.toolRole)return S.toolRole+'工具人';
+  if(S.pos==='TW'){
+    const pm=Math.max(a.vel,a.ctl,a.brk), bm=Math.max(a.con,a.pow,a.eye,a.spd);
+    if(Math.max(pm,bm)<52)return decliningVeteran?'老將':'潛力股';
+    if(Math.abs(pm-bm)<=4)return '二刀流';
+    return pm>bm?'二刀流・投手型':'二刀流・打者型';
+  }
   if(S.pos==='P'){
     const m=Math.max(a.vel,a.ctl,a.brk);
-    if(m<52)return '潛力股';
+    if(m<52)return decliningVeteran?'老將':'潛力股';
     if(a.sta>=m&&a.sta>=62)return '工作馬';
     if(m===a.vel)return '火球男'; if(m===a.brk)return '魔術師'; return '人體Kzone';
   }
@@ -142,14 +203,31 @@ export function playerType(){
   const dv=S.pos==='C'?(a.rng+a.fld+a.cat)/3:(a.rng+a.fld+a.arm)/3;
   const cand=[['巨炮型',a.pow],['安打製造機',a.con],['選球大師',a.eye],['飛毛腿',a.spd],['守備達人',dv]];
   cand.sort((x,y)=>y[1]-x[1]);
-  if(cand[0][1]<52)return '潛力股';
+  if(cand[0][1]<52)return decliningVeteran?'老將':'潛力股';
   if(cand[0][1]-cand[1][1]<=3&&cand[0][1]>=60)return '全能型';
   return cand[0][0];
 }
-export function abCost(k){ /* 目前這一級要花幾點(須與 addAb 成本公式一致) */
-  const cur=S.ab[k], pk=(S.pot&&S.pot[k])||62, isP=S.pos==='P';
-  let c=isP?(cur>=66?7:cur>=58?4:cur>=50?2:1):(cur>=72?3:cur>=64?2:1);
-  if(cur>=pk)c*=isP?4:3; return c;
+/* ---------- 能力成本曲線 ----------
+   原本 abCost / addAb / addAbStat 各抄一份 `const isP=S.pos==='P'`，三份還不完全一致
+   (addAbStat 漏了體力的例外，讓投手的體力在那條路徑吃了球威的陡曲線)。
+   二刀流同時擁有兩種曲線的鍵，用守位判定會讓他的打擊也吃投手成本，所以一律改成看「鍵」。
+   對投手與野手來說這是恆等變換:投手只有 sta/vel/ctl/brk，`k!=='sta'` 就等於 isPitchTool(k)；
+   野手一項球威也沒有。 */
+export const isPitchTool=k=>PITCH_TOOLS.includes(k);
+export function abStepCost(k,cur){
+  return isPitchTool(k)?(cur>=66?7:cur>=58?4:cur>=50?2:1)  /* 球威三項:養成成本最陡 */
+                       :(cur>=72?3:cur>=64?2:1);           /* 野手九項與體力 */
+}
+/* 天花板之上的倍率。投手／野手維持原本「依守位」的判定——v1.5.9 只把體力的「級距成本」
+   換成野手曲線，刻意沒動超潛力的 ×4，這裡照舊。二刀流兩種鍵都有，只能依鍵判定。 */
+export function abOverCapMult(k){
+  if(S.pos==='TW')return isPitchTool(k)?4:3;
+  return S.pos==='P'?4:3;
+}
+export function abCost(k){ /* 目前這一級要花幾點(與 addAb 共用同一組公式) */
+  const cur=S.ab[k], pk=(S.pot&&S.pot[k])||62;
+  let c=abStepCost(k,cur);
+  if(cur>=pk)c*=abOverCapMult(k); return c;
 }
 export function normalizeAbCarry(k){
   if(!S.carry)S.carry={};
@@ -171,11 +249,17 @@ export function addAb(k,v){ if(!(k in S.ab))return 0;
   if(!S.carry)S.carry={};
   let cur=o,bud=v+(S.carry[k]||0); /* 未滿一級的點數累積在進度槽,不再蒸發 */
   const pk=(S&&S.pot&&S.pot[k])||62;
-  const isP=S&&S.pos==='P';
   while(bud>0&&cur<80){
-    let cost=isP?(cur>=66?7:cur>=58?4:cur>=50?2:1)      /* 投手只有4項,養成成本最陡 */
-              :(cur>=72?3:cur>=64?2:1);                    /* 野手9項,中高段變貴 */
-    if(cur>=pk)cost*=isP?4:3; /* 天花板之上:投手×4、野手×3 */
+    /* v1.5.9 體力單獨改用野手曲線。體力不是球威，卻跟球速/控球/變化球吃同一條
+       最陡的成本(66 以上每點 7)，而先發必須把體力墊到 52 才站得上輪值——那些點數
+       本來該進球威。實測結果是先發成為唯一一條「實際峰值低於自身潛力」的路線
+       (峰值 − 潛力 = −3.3；後援 0.0、捕手 +2.3、一壘 +3.7)，天賦再好也轉不成分數：
+       名人堂率在四個運氣分層是 12/12/9/15%，完全沒有梯度。
+       只動體力這一項(球威成本與超潛力 ×4 都不碰)之後：−3.3 → −1.3，
+       名人堂率 15/14/15/55%——普通運氣只動 3 個百分點，但「天賦好又健康」
+       從 15% 回到 55%，跟捕手(54)、游擊(52) 對齊。後援幾乎不受影響(本來就不練體力)。 */
+    let cost=abStepCost(k,cur);
+    if(cur>=pk)cost*=abOverCapMult(k);
     if(bud>=cost){bud-=cost;cur++;} else break; }
   if(cur>=80) S.lastOverflow=bud; /* 滿 80 後，剩下的點數才是真正的溢出 */
   S.carry[k]=cur>=80?0:bud;
@@ -183,14 +267,13 @@ export function addAb(k,v){ if(!(k in S.ab))return 0;
 export function addAbStat(k,amt){ 
   if(amt<=0)return addAb(k,amt);
   const pk=(S.pot&&S.pot[k])||62;
-  const isP=S.pos==='P';
   let cur=S.ab[k], bud=amt, cr=(S.carry&&S.carry[k])||0, gained=0;
   /* 潛力已滿：直接全額轉為狀態火燙 */
   if(cur>=pk){ S.pendStat=(S.pendStat||0)+bud; return 0; }
   
   /* 潛力未滿：依正常成本加點，達到潛力上限就停止 */
   while(bud>0 && cur<pk){
-    let c = isP ? (cur>=66?7:cur>=58?4:cur>=50?2:1) : (cur>=72?3:cur>=64?2:1);
+    let c = abStepCost(k,cur);  /* 修正:原本這裡漏了體力的例外，與 abCost／addAb 不一致 */
     bud--; cr++; if(cr>=c){ cr-=c; cur++; gained++; }
   }
   

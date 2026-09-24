@@ -1,8 +1,8 @@
-import {S} from '../core/state.js?v=1.5.6';
-import {R, pick, chance, clamp} from '../core/rng.js?v=1.5.6';
-import {ABL, POS_AB} from '../data/abilities.js?v=1.5.6';
-import {card, choose, board} from '../ui/dom.js?v=1.5.6';
-import {addAb, addAbStat, statBonusTxt, abGainTxt} from '../engine/ability.js?v=1.5.6';
+import {S} from '../core/state.js?v=2.0.11';
+import {R, pick, chance, clamp} from '../core/rng.js?v=2.0.11';
+import {ABL, POS_AB} from '../data/abilities.js?v=2.0.11';
+import {card, choose, board} from '../ui/dom.js?v=2.0.11';
+import {addAb, addAbStat, statBonusTxt, abGainTxt} from '../engine/ability.js?v=2.0.11';
 /* 出廠預設為全虛構人名;玩家可透過隱藏編輯器自訂名單(僅存於玩家本機) */
 export let CHEER=['林曉晴','陳若彤','張沛慈','王詠恩','許昀熙','蘇采蓁','周依潔','郭芷萱'];
 export const CHEER_DEFAULT=CHEER.slice();
@@ -52,16 +52,29 @@ export function loveEvent(next){
   /* ---------- 未婚/離婚:緋聞 → 雙重關卡 → 交往 ---------- */
   if(L.st==='single'||L.st==='divorced'){
     const p=pick(datePool());
-    card('info','場外話題',`你和啦啦隊女神 <b class="hl">${p}</b> 被拍到球場外同框，緋聞登上娛樂版頭條。${L.exes.length?'（評論區：「離過婚還這麼搶手」）':''}`);
+    const former=L.exes.find(e=>e.name===p);
+    const twiceCaught=!!former&&(L.caught||0)>=2;
+    const confessionChance=former?(twiceCaught?0:30):65;
+    card('info',former?'舊情重燃':'場外話題',former
+      ?`你和前妻 <b class="hl">${p}</b> 再次被拍到一起出現。記者立刻追了上來，想知道這次見面究竟代表什麼。`
+      :`你和啦啦隊女神 <b class="hl">${p}</b> 被拍到球場外同框，緋聞登上娛樂版頭條。${L.exes.length?'（評論區：「離過婚還這麼搶手」）':''}`);
     choose('記者把麥克風遞到你面前：「兩位是在交往嗎？」',[
-      {t:'大方承認：「請大家祝福我們」',s:'還要看她那邊敢不敢承認（球團有禁愛令傳聞）',f:()=>{
-        if(chance(65)){ L.st='dating'; L.partner=p; L.dyrs=0; L.datedTimes=(L.datedTimes||0)+1;
+      {t:former?'再次告白：「我想重新開始」':'大方承認：「請大家祝福我們」',
+       s:former?`她是否願意重新相信你（成功率 ${confessionChance}%）`:'還要看她那邊敢不敢承認（球團有禁愛令傳聞）',f:()=>{
+        if(chance(confessionChance)){ L.st='dating'; L.partner=p; L.dyrs=0; L.datedTimes=(L.datedTimes||0)+1;
           const gt=loveGainTxt('sta',1); board(1);
-          card('gold','戀情公開',`<b class="hl">${p}</b> 在社群發出十指緊扣的照片：「謝謝大家的祝福。」戀愛使人容光煥發——${gt}。你們正式交往了。`);
-          if(L.datedTimes>=3&&L.kids===0&&!S.traits.married&&!S.traits.confidante){ S.traits.confidante=true;
+          card('gold',former?'重新開始':'戀情公開',former
+            ?`${former.kids>0?'孩子的教養問題':'沒有刪除乾淨的聯絡方式'}，又讓你們搭上了線。你知道你犯過錯，所以你用盡了所有方式，去重建破碎的信任。你在第一次見面的地方重新告白，她懷疑了一下，然後哭了。她點了點頭，勉強嘗試去相信你。<br>${gt}。你們重新交往了。`
+            :`<b class="hl">${p}</b> 在社群發出十指緊扣的照片：「謝謝大家的祝福。」戀愛使人容光煥發——${gt}。你們正式交往了。`);
+          const hasAnyKids=L.kids+L.exes.reduce((n,e)=>n+(e.kids||0),0)>0;
+          if(L.datedTimes>=3&&!hasAnyKids&&!S.traits.married&&!S.traits.confidante){ S.traits.confidante=true;
             card('gold','隱藏稱號：閨中密友',`第三段戀情，還是走到了同樣的結局。「我愛上了你，你卻只把我當好姊妹。」——有些人註定是別人生命裡的過客。`); board(1); }
         }
-        else{ card('bad','單方面承認',`她隔天透過經紀公司否認：「只是普通朋友。」據傳啦啦隊<b class="dn">禁愛令</b>壓力不小。你一個人站在風裡，超級尷尬。`); }
+        else{ card('bad',former?'回不到從前':'單方面承認',former
+          ?(twiceCaught
+            ?`她深吸了一口氣：「你當我是白癡？」只差沒有甩一巴掌在你臉上。`
+            :`破碎的信任完全無法恢復，她的姊妹要她吃點好的，何必眷戀你這個爛男人？`)
+          :`她隔天透過經紀公司否認：「只是普通朋友。」據傳啦啦隊<b class="dn">禁愛令</b>壓力不小。你一個人站在風裡，超級尷尬。`); }
         next(); }},
       {t:'笑而不答，快步走過',main:true,s:'不承認就沒有下文',f:()=>{
         card('info','未完待續','緋聞燒了三天就退燒。也許時機還沒到。'); next(); }}]); return;
@@ -127,7 +140,11 @@ export function proposalAsk(next){
   const L=S.love; if(L.st!=='dating'){ next(); return; }
   choose(`交往第 ${L.dyrs} 年——${L.partner} 看著別人的婚禮影片看了很久`,[
     {t:'就是現在——求婚',s:'固定加成：全體力提升、本季更不容易受傷',f:()=>{
-      L.st='married'; L.kids=0; L.dyrs=0;
+      /* 與前妻復合後再婚：共同孩子回到目前家庭，前妻紀錄不再重複顯示。 */
+      const formerIndex=L.exes.findIndex(e=>e.name===L.partner);
+      const reunitedKids=formerIndex>=0?(L.exes[formerIndex].kids||0):0;
+      if(formerIndex>=0)L.exes.splice(formerIndex,1);
+      L.st='married'; L.kids=reunitedKids; L.dyrs=0;
       const gTxt=loveGainTxt('sta',2)+'、'; S.tmpInj-=5; board(1);
       card('gold','婚禮',`你在主場本壘板後方單膝跪地，大螢幕打出「Marry Me」。<b class="hl">${L.partner}</b> 哭著點頭。休賽季完婚，紅毯用壘包排成——${gTxt}本季受傷機率 <b class="up">−5%</b>。`); next(); }},
     {t:'再存一點錢吧',main:true,s:'她沒說什麼,但交往越久分手風險越高',f:()=>{

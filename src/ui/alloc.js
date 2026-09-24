@@ -1,9 +1,9 @@
-import {$, actClear, actToggleSync, board, scrollBottom} from './dom.js?v=1.5.6';
-import {S} from '../core/state.js?v=1.5.6';
-import {ABL, POS_AB} from '../data/abilities.js?v=1.5.6';
-import {abCost, normalizeAbCarry, addAb} from '../engine/ability.js?v=1.5.6';
-import {allocDone} from '../flow/events.js?v=1.5.6';
-import {isMobileLayout} from './prefs.js?v=1.5.6';
+import {$, actClear, actToggleSync, board, scrollBottom} from './dom.js?v=2.0.11';
+import {S} from '../core/state.js?v=2.0.11';
+import {ABL, POS_AB} from '../data/abilities.js?v=2.0.11';
+import {abCost, normalizeAbCarry, addAb} from '../engine/ability.js?v=2.0.11';
+import {allocDone} from '../flow/events.js?v=2.0.11';
+import {isMobileLayout} from './prefs.js?v=2.0.11';
 
 export function allocFullOpen(){ const f=$('alloc-full'); if(f)f.classList.add('show'); }
 export function allocFullClose(){ const f=$('alloc-full'); if(f)f.classList.remove('show'); }
@@ -21,8 +21,8 @@ export function allocPlace(){
     /* move the nodes out of #act before rewriting it, or the rewrite would destroy them */
     const fb=$('af-body');
     fb.appendChild(ALLOC.top); fb.appendChild(ALLOC.rows); fb.appendChild(ALLOC.btm);
-    const ft=$('af-title'); if(ft)ft.textContent=ALLOC.label;
-    a.innerHTML=`<div class="title">${ALLOC.label}</div><div class="pool" id="al-cue"></div>`;
+    const ft=$('af-title'); if(ft)ft.textContent=ALLOC.title||ALLOC.label;
+    a.innerHTML=`<div class="title">${ALLOC.title||ALLOC.label}</div><div class="pool" id="al-cue"></div>`;
     /* both entry points already sit behind an explicit 分配 button, so the overlay opens
        straight away; this one is only the way back after the player dismisses it */
     const ob=document.createElement('button'); ob.className='btn main'; ob.id='al-open';
@@ -32,7 +32,8 @@ export function allocPlace(){
   }else{
     const frag=document.createDocumentFragment();
     frag.appendChild(ALLOC.top); frag.appendChild(ALLOC.rows); frag.appendChild(ALLOC.btm);
-    a.innerHTML=`<div class="title">${ALLOC.label}</div>`;
+    a.innerHTML=`<div class="title">${ALLOC.title||ALLOC.label}</div>`+
+      (ALLOC.hint?`<div class="al-hint">${ALLOC.hint}</div>`:'');
     a.appendChild(frag);
     allocFullClose();
   }
@@ -47,12 +48,17 @@ export function allocUI(mode,label,done){
   actClear();
   const a=$('act'); const keys=POS_AB[S.pos];
   let dice=mode.dice?mode.dice.slice():null, pool=mode.pool||0, idx=0, hist=[];
-  a.innerHTML=`<div class="title">${label}</div><div id="al-top"></div><div id="al-rows"></div><div class="row2" id="al-btm"></div>`;
+  /* SCREEN_09：標題列只放「分配訓練成果」，括號裡的操作提示獨立成一行說明，
+     不要整串塞進 action sheet 的標題（會被截斷成一長條）。 */
+  const lm=String(label).match(/^([^（(]+)[（(](.+)[）)]\s*$/);
+  const alTitle=lm?lm[1].trim():label, alHint=lm?lm[2].trim():'';
+  a.innerHTML=`<div class="title">${alTitle}</div>`+(alHint?`<div class="al-hint">${alHint}</div>`:'')+
+    `<div id="al-top"></div><div id="al-rows"></div><div class="row2" id="al-btm"></div>`;
   const touchedKeys={};
   const top=$('al-top'),rows=$('al-rows'),btm=$('al-btm');
   /* allocPlace() below decides panel vs overlay from the current settings, and can be
      called again by applyMobileUI / applyBigText if the player changes them mid-allocation */
-  setAlloc({top,rows,btm,label,render});
+  setAlloc({top,rows,btm,label,title:alTitle,hint:alHint,render});
   function remaining(){ return dice?dice.length-idx:pool; }
   function render(){
     if(dice){ top.innerHTML='<div id="dice">'+dice.map((v,i)=>`<div class="die ${i<idx?'used':''} ${i===idx?'active':''} ${v===6?'six':''}">${v}</div>`).join('')+'</div>'; }
@@ -72,7 +78,6 @@ export function allocUI(mode,label,done){
     /* 復原鈕固定佔位:無可復原時 disabled 而非消失,避免版面跳動誤觸 */
     const u=document.createElement('button'); u.className='btn'; u.style.textAlign='center';
     u.textContent='↩ 復原'; u.disabled=!hist.length;
-    u.style.opacity=hist.length?'1':'0.35'; u.style.cursor=hist.length?'pointer':'default';
     if(hist.length)u.onclick=()=>{ const [k,got,pc]=hist.pop(); S.ab[k]-=got; if(S.carry)S.carry[k]=pc; if(dice)idx--; else pool++; render(); board(0); };
     btm.appendChild(u);
     const allCap=keys.every(k=>S.ab[k]>=80);

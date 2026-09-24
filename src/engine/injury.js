@@ -1,32 +1,51 @@
-import {S} from '../core/state.js?v=1.5.6';
-import {R, ri, pick, chance, clamp} from '../core/rng.js?v=1.5.6';
-import {ABL, POS_AB} from '../data/abilities.js?v=1.5.6';
-import {LV} from '../data/teams.js?v=1.5.6';
-import {card, choose, board} from '../ui/dom.js?v=1.5.6';
-import {addAb} from './ability.js?v=1.5.6';
-import {isSP} from './season.js?v=1.5.6';
-import {removeTrait} from '../flow/events.js?v=1.5.6';
+import {S} from '../core/state.js?v=2.0.11';
+import {R, ri, pick, chance, clamp} from '../core/rng.js?v=2.0.11';
+import {ABL, POS_AB} from '../data/abilities.js?v=2.0.11';
+import {LV} from '../data/teams.js?v=2.0.11';
+import {card, choose, board} from '../ui/dom.js?v=2.0.11';
+import {addAb} from './ability.js?v=2.0.11';
+import {isSP, pitG, TW_EFFORT} from './season.js?v=2.0.11';
+import {removeTrait} from '../flow/events.js?v=2.0.11';
+/* 單刀投手的手肘磨損倍數。二刀流那組在 season.js 的 TW_EFFORT.tj（1.55/1.35/1.20）。
+   二刀流的倍數自成一組的理由：workload 項是 IP÷該層級場次，局數砍下去會自動讓他的
+   手臂比全職王牌更耐用——但現實相反（大谷開了兩次刀）。見 docs/twoway-design.md。
+
+   ⚠ 這兩張表是「開季投球規劃」面板文案的唯一來源（flow/phases.js 直接讀）。
+   曾經三個地方各寫一份，改了引擎卻忘了改面板，玩家看到的還是舊數字。 */
+export const SOLO_EFFORT_TJ={'全力投':1.30,'普通投':1.00,'養生球':0.80};
+export function tjEffortMult(pos,effort){
+  const p=pos||S.pos, e=effort||S.effort;
+  return p==='TW'?(TW_EFFORT[e]||TW_EFFORT['普通投']).tj:(SOLO_EFFORT_TJ[e]??1.0);
+}
 export function tjAccrue(st,lv){ /* 球威風險 × 投法 × 角色標準化工作量；體力不參與。 */
-  if(S.pos!=='P'||S.seasonFactor<=0||!st||!(st.G>0))return;
-  const L=LV[lv||S.lv],effort={'全力投':1.30,'普通投':1.0,'養生球':0.80}[S.effort]||1.0;
+  if((S.pos!=='P'&&S.pos!=='TW')||S.seasonFactor<=0||!st||!(pitG(st)>0))return;
+  const L=LV[lv||S.lv];
+  const effort=tjEffortMult();
   /* 先發以該層級球季場數作標準局數；後援以約 45% 賽程、最高 60 場作標準登板。 */
   const roleTarget=isSP()?(L.g||1):Math.min(60,Math.max(1,Math.round((L.g||1)*0.45)));
-  const actual=isSP()?(st.IP||0):(st.G||0);
+  /* 後援用登板數:二刀流的 st.G 是打擊出賽，直接讀會把累積灌爆。 */
+  const actual=isSP()?(st.IP||0):pitG(st);
   const normalized=actual/roleTarget;
   const workload=clamp(0.4+0.6*normalized,0.4,1.2);
   /* 第一次術後 ×1.15；第二次後再把既有損耗速度乘 1.20（合計 ×1.38），提高第三次危機機率。 */
   const scarMult=S.tjCount>=2?1.15*1.20:S.tjCount>=1?1.15:1;
   const base=(S.ab.vel+S.ab.brk)/19*effort*workload*scarMult;
   S.tj+=base;
-  /* 二次重建有硬性壽命：只要仍有登板，第二次 TJ 後第 3 年最遲必定再次拉警報；高負荷可自然提早至第 2 年。 */
-  if(S.tjCount===2&&Number.isFinite(S.tjSecondYear)&&S.year-S.tjSecondYear>=3)S.tj=Math.max(S.tj,tjCap());
+  /* v1.5.7 移除「二次重建後第 3 年必定拉警報」的硬性期限。
+     原設計用 tjSecondYear 在固定年限把量表強制補滿，等於把第三次 TJ 寫成劇本而非模擬結果——
+     玩家不論怎麼調整投球數、投法、工作量都改變不了，決策失去意義。
+     現在第三次危機一律由 scarMult(×1.38) 與殘留量表自然推動：仍然明顯比第一次快，但可被操作。 */
 }
-export function tjCap(){ return S.traits.rubber?100:50; }
+/* v1.5.7 量表上限 50→60（橡皮人維持 2 倍＝120）。
+   原因不是名人堂難度，是傷病頻率本身失真：實測大聯盟先發 100% 會碰到手肘危機、平均動刀 2.2 次，
+   現實中約三分之一的投手一輩子動過一次、動三次幾乎等於退休。
+   實測改為 60 之後（大聯盟先發 N=250）：平均動刀 2.2→1.4 次、首次危機 28.5→29.5 歲、
+   生涯 13.0→14.1 季；名人堂% 只動 +4～9pp（峰值 72：44%→48%），所以這是擬真調整不是難度調整。
+   殘留量表刻意維持 ri(38,44) 不同比例放大：在 60 的尺上是 63～73%，
+   二次重建後第三次危機仍然機率很高、但不再是必然——這正是移除硬性期限想要的結果。 */
+export function tjCap(){ return S.traits.rubber?120:60; }
 export function tjGamble(cont){ /* 量表達上限:先扣 -5,再對賭 */
-  if(S.pos!=='P'||S.tj<tjCap()){ cont(); return; }
-  /* 二次重建的「2～3 年內再度危機」是一次性期限：第一次真的拉警報後即已兌現，
-     不可讓 tjSecondYear 在往後每年持續把量表強制補滿。 */
-  if(S.tjCount===2&&Number.isFinite(S.tjSecondYear)&&S.year>S.tjSecondYear)S.tjSecondYear=null;
+  if((S.pos!=='P'&&S.pos!=='TW')||S.tj<tjCap()){ cont(); return; }
   S.tjCrises=(S.tjCrises||0)+1;
   const crisisBefore={vel:S.ab.vel,brk:S.ab.brk};
   addAb('vel',-5); addAb('brk',-5); board(1);
@@ -34,7 +53,7 @@ export function tjGamble(cont){ /* 量表達上限:先扣 -5,再對賭 */
   const succP=S.traits.rubber?85:55;
   choose('TJ 抉擇：你的手肘撐到極限了',[
     {t:'動 Tommy John 手術',main:true,s:'下一季全年復健；警報先 −5，第一次手術直接回升 +3～+10，重複動刀的恢復幅度較低',f:()=>{
-      S.tj=0; S.tjCount++; S.rehab=1; S.marketInjury='major';
+      S.tj=0; S.tjCount++; S.rehab=1; S.rehabPitchOnly=(S.pos==='TW'); S.marketInjury='major';
       const first=S.tjCount===1,lo=first?3:2,hi=first?10:7;
       const gv=ri(lo,hi),gb=ri(lo,hi);
       /* 能力算式固定為「危機前能力 −5 + 手術回升」；直接加在能力值，不經訓練點成本。第一次僅免除重複動刀的額外永久懲罰。 */
@@ -56,9 +75,10 @@ export function tjRepeatDamage(){
   if(S.tjCount===2){
     const dv=ri(6,10),db=ri(6,10);
     S.ab.vel=clamp(S.ab.vel-dv,1,80); S.ab.brk=clamp(S.ab.brk-db,1,80);
-    /* 二次重建後不再回到健康的零點：殘留 38～44／50；隔年復健後，第三次危機固定落在第 2～3 年。 */
-    const residue=ri(38,44); S.tj=Math.max(S.tj,residue); S.tjSecondYear=S.year;
-    card('bad','兩度動刀的代價',`第二次進手術室，重建過的韌帶與代償已經留下永久痕跡——球速 <b class="dn">−${dv}</b>、變化球 <b class="dn">−${db}</b>。更糟的是，手肘已經不可能真正歸零；即使下一季完成復健，第三次危機也會在不遠的將來追上你。`);
+    /* 二次重建後不再回到健康的零點：殘留 38～44／60。第三次危機由殘留＋scarMult 自然推動，
+       不再有固定年限（v1.5.7 移除 tjSecondYear）——減量、養生球、轉後援都能實際延後它。 */
+    const residue=ri(38,44); S.tj=Math.max(S.tj,residue);
+    card('bad','兩度動刀的代價',`第二次進手術室，重建過的韌帶與代償已經留下永久痕跡——球速 <b class="dn">−${dv}</b>、變化球 <b class="dn">−${db}</b>。更糟的是，手肘已經不可能真正歸零——量表不會再回到零點，第三次危機隨時可能追上你。<b class="hl">從現在起，投多少、怎麼投，都會直接決定它什麼時候來。</b>`);
   }else if(S.tjCount>=3){
     S.ab.vel=clamp(Math.round(S.ab.vel/2),1,80);
     S.ab.brk=clamp(Math.round(S.ab.brk/2),1,80);
@@ -67,7 +87,7 @@ export function tjRepeatDamage(){
   board(1);
 }
 export function tjBigInjury(cont){
-  S.tjCount++; S.rehab=1; S.tj=0; S.marketInjury='major';
+  S.tjCount++; S.rehab=1; S.rehabPitchOnly=(S.pos==='TW'); S.tj=0; S.marketInjury='major';
   /* 5% 肩膀報廢 */
   if(chance(5)){ S.ab.vel=10; S.ab.brk=10; S.pot.vel=20; S.pot.brk=20;
     card('bad','最壞的結果',`長期閃避手肘的痛處，你的姿勢逐漸變形，投球姿勢彷彿在推鉛球。突然一陣劇痛，你突然發現你的手抬不起來了。<br><b class="dn">肩膀報廢：球速與變化球降至 10，潛力上限降至 20。</b>`);
@@ -122,19 +142,19 @@ export function rollInjury(){
   S.injNext=0;
   if(chance(64)){ // 64% 的機率是小傷
     const cut=ri(20,45); S.seasonFactor=1-cut/100; S.ironStreak=0; S.marketInjury='minor';
-    card('bad','小傷',`肌肉拉傷進了傷兵名單，本季出賽量預估減少 <b class="dn">${cut}%</b>。${injStatLoss(false)}`);
+    card('bad','小傷',`肌肉拉傷進了傷兵名單，本季出賽量預估減少 <b class="dn">${cut}%</b>。${injStatLoss(false)}（受傷機率 ${p}%）`);
   }else{
     const played = ri(5, 45); /* 讓賽季隨機進行了 5% ~ 45% 時才受傷 */
     S.seasonFactor = played / 100; /* 把比例套用到當季出賽 */
     S.bigInj++; S.ironStreak=0; S.marketInjury='major';
     let txt=`重大傷勢——進手術室了。<b class="dn">賽季提前報銷</b>（本季留下 ${played}% 的出賽紀錄）。`;
     if(chance(20)){ S.rehab=1; txt+=`醫生搖搖頭：<b class="dn">明年也很難趕上開季</b>（明年整季報廢）。`; }
-    card('bad','大傷',txt+injStatLoss(true));
+    card('bad','大傷',txt+injStatLoss(true)+`（受傷機率 ${p}%）`);
     if(S.bigInj>=2&&!S.traits.glass&&S.age<32){ /* 32 歲後的大傷是老化,不再定性為玻璃體質 */
       /* 玻璃人與鐵人互為對立體質，不可並存：本來是鐵人的話直接被玻璃人覆蓋過去。 */
       const wasIron=!!S.traits.iron;
       if(wasIron)removeTrait('iron','鐵人');
-      S.traits.glass=true;
+      S.traits.glass=true; S.glassYear=S.year;
       S.removed=(S.removed||[]).filter(x=>x!=='玻璃人'); /* 曾被鐵人蓋掉又碎回來:清掉刪除線紀錄 */
       if(wasIron)
         card('bad','隱藏素質覆蓋：鐵人 → 玻璃人','大量的出賽，開始讓你原本如機器人般的身體出現變化，身體逐漸脆弱，最後變為易碎品。<br><b class="dn">鐵人解除</b>，未來每季受傷機率<b class="dn">不低於 40%</b>。');

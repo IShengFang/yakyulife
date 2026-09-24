@@ -1,11 +1,13 @@
-import {S} from '../core/state.js?v=1.5.6';
-import {chance, clamp} from '../core/rng.js?v=1.5.6';
-import {DPN, GLOVE_TH, GLOVE_K} from '../data/abilities.js?v=1.5.6';
-import {LV} from '../data/teams.js?v=1.5.6';
-import {card} from '../ui/dom.js?v=1.5.6';
-import {tlNote} from '../ui/timeline.js?v=1.5.6';
-import {isSP, slgOf, baseballERA} from './season.js?v=1.5.6';
-import {traitCard, removeTrait} from '../flow/events.js?v=1.5.6';
+import {S} from '../core/state.js?v=2.0.11';
+import {chance, clamp} from '../core/rng.js?v=2.0.11';
+import {DPN, GLOVE_TH, GLOVE_K} from '../data/abilities.js?v=2.0.11';
+import {LV} from '../data/teams.js?v=2.0.11';
+import {AWARD_TH, starTh} from '../data/thresholds.js?v=2.0.11';
+import {card} from '../ui/dom.js?v=2.0.11';
+import {tlNote} from '../ui/timeline.js?v=2.0.11';
+import {isSP, slgOf, baseballERA, pitG} from './season.js?v=2.0.11';
+import {isCareerScoringAward, splitBySide} from './award-rules.js?v=2.0.11';
+import {traitCard, removeTrait} from '../flow/events.js?v=2.0.11';
 /* 獎項機率同時有硬下限與必得上限；數值越低越好的獎項（ERA）用 lower=true。 */
 export function awardP(value,hardLow,autoWin,base=25,lower=false){
   const ineligible=lower?value>hardLow:value<hardLow;
@@ -21,6 +23,31 @@ export function rookieAwardGuaranteed(honors,year,leagueName){
   const titleCount=sameLeagueAwards.filter(x=>/(勝投王|防禦率王|三振王|救援王|中繼王|打擊王|全壘打王|盜壘王|打點王|上壘王)$/.test(x)).length;
   return elite||titleCount>=2;
 }
+/* 新人資格以「曾站上更高聯盟」為準：小聯盟／二軍經歷不會取消中職新人資格，
+   但打過日職或大聯盟後返台，以及打過大聯盟後轉戰日職，均不再是新人。 */
+export function rookieLeagueEligible(bucket,stats=S.stats){
+  if(bucket==='CPBL')return !(stats&&stats.NPB)&&!(stats&&stats.MLB);
+  if(bucket==='NPB')return !(stats&&stats.MLB);
+  return bucket==='MLB';
+}
+/* 新人王至少要有一段可評價的一軍球季；門檻依聯盟場次等比縮放。 */
+export function rookieWorkloadEligible(bucket,st,pos,role){
+  pos=pos||(S&&S.pos); role=role||(S&&S.role);
+  const games=((LV[({CPBL:'CPBL1',NPB:'NPB1',MLB:'MLB'})[bucket]]||{}).g)||120;
+  const gp=Number.isFinite(st&&st.GP)?st.GP:((st&&st.G)||0);
+  const pitchOK=role==='SP'
+    ? gp>=Math.ceil(games*.08)&&(st.IP||0)>=Math.ceil(games*.40)
+    : gp>=Math.ceil(games*.25)&&(st.IP||0)>=Math.ceil(games*.12);
+  const batOK=(st.G||0)>=Math.ceil(games*.40)&&(st.PA||0)>=Math.ceil(games*1.50);
+  /* 二刀流任一側達到門檻就有新人王資格:兩側都要求全額會讓他哪一邊都不夠。 */
+  if(pos==='TW')return pitchOK||batOK;
+  if(pos==='P')return pitchOK;
+  return batOK;
+}
+export function canUnlockPhoenix(added,state=S){
+  if(!state.traits.glass||state.traits.phoenix||state.glassYear===state.year)return false;
+  return (added||[]).some(x=>isCareerScoringAward(String(x).replace(/^\d{4}\s+/,'')));
+}
 export function pitcherAwardName(bucket){
   const leagueName={CPBL:'中職',NPB:'日職',MLB:'大聯盟'}[bucket];
   return `${leagueName}年度最佳投手`;
@@ -31,9 +58,10 @@ export function batterAwardName(bucket){
 }
 export function relieverAceChance(st,role){
   const era=Number(st&&st.era);
-  if(role!=='CL'||!Number.isFinite(era)||st.G<50||era>2.20||(st.SV||0)<35)return 0;
+  const clEra=starTh(S.lv).clEra;
+  if(role!=='CL'||!Number.isFinite(era)||st.G<50||era>clEra||(st.SV||0)<35)return 0;
   return clamp(
-    3+Math.max(0,2.20-era)*8+Math.max(0,(st.SV||0)-35)*0.4+Math.max(0,(st.d||0)-10)*0.8,
+    3+Math.max(0,clEra-era)*8+Math.max(0,(st.SV||0)-35)*0.4+Math.max(0,(st.d||0)-10)*0.8,
     3,18
   );
 }
@@ -41,40 +69,38 @@ export function awards(bucket,st){
   if(!LV[S.lv].top||S.seasonFactor===0)return;
   const y=S.year,h=S.honors,lgN={CPBL:'中職',NPB:'日職',MLB:'大聯盟'}[bucket],aceName=pitcherAwardName(bucket),bestBatterName=batterAwardName(bucket);
 
-  /* 符合 simSeason 數學邏輯的門檻表 [必不得獎下限, 必得獎上限] */
-  /* 比率數據(ERA/AVG/OBP)與非場次連動數據(SV/HLD/SB)三個聯盟統一標準 */
-  /* 只有吃打席/局數的(HR/RBI/SO)依 120:143:162 場次等比放大 */
-  /* 投手的量產型獎項(SO/W)依「先發輪次」放大,不是依球季場次:日職是六人輪值,
-     143 場 / 6 人 = 23.8 輪，與中職 120 場 / 5 人 = 24.0 輪幾乎相同，所以門檻與中職同級；
-     大聯盟 162 場 / 5 人 = 32.4 輪，比中職多 35%，門檻才該放大(so 175、w 14)。
-     舊版按場次放大成 so 155 / w 12，但日職先發的實際工作量並沒有跟著長，
-     造成日職名人堂級投手 15 年只拿 0.7 座三振王。 */
-  /* era(最佳投手)門檻收緊為[2.90,1.90](原[3.20,2.20])，避免生涯夠長時單靠中等偏上的ERA
-     就能反覆拿下最高榮譽；eraK(防禦率王)則刻意更嚴格，避免同一顆ERA每年雙開兩個獎項。 */
-  const TH = {
-    CPBL: { g: 120, era: [2.90, 1.90], eraK: [2.80, 1.60], sv: [22, 35], hld: [18, 30], so: [130, 180], w: [10, 16], avg: [0.300, 0.360], hr: [20, 32], rbi: [75, 105], obp: [0.370, 0.430] },
-    NPB:  { g: 143, era: [2.90, 1.90], eraK: [2.80, 1.60], sv: [22, 35], hld: [18, 30], so: [132, 183], w: [10, 16], avg: [0.300, 0.360], hr: [24, 38], rbi: [90, 125], obp: [0.370, 0.430] },
-    MLB:  { g: 162, era: [2.90, 1.90], eraK: [2.80, 1.60], sv: [22, 35], hld: [18, 30], so: [175, 240], w: [14, 20], avg: [0.300, 0.360], hr: [27, 43], rbi: [100, 140], obp: [0.370, 0.430] }
-  };
+  /* 門檻表已經搬到 data/thresholds.js（AWARD_TH），並依新的聯盟環境重新擬合過。
+     擬合目標是「保住得獎機率的分布」而不是保住絕對數字，作法與實測誤差見那個檔案。 */
+  const TH = AWARD_TH;
+  /* 這一段留著當歷史：v1.6.0 曾把大聯盟的 ERA 門檻單獨改成 [3.50,2.40]，
+     因為當時三個聯盟的率值基準是同一組寫死的常數，只靠「− par」表達聯盟差異，
+     大聯盟連最佳 10% 的球季都摸不到 2.90，年度最佳投手變成拿不到的獎。
+     v1.6.1 之後率值基準本身就隨聯盟走了（data/teams.js 的 env），
+     門檻也整組依新環境重新擬合（data/thresholds.js），這個症狀從根上消失。 */
   const th = TH[bucket] || TH.CPBL;
 
   /* 1. 明星賽入選：一般球隊須先達真實成績門檻；台中猛獁可用 30% 人氣票入選。 */
   {
     const d=st.d;
     const popular=bucket==='CPBL'&&S.orgTeam==='台中猛獁';
-    const workloadOK=S.pos==='P'
-      ? (isSP()?st.IP>=60:st.G>=25)
-      : st.PA>=Math.round(LV[S.lv].g*1.7);
+    const gp=pitG(st);
+    const pitWork=isSP()?st.IP>=60:gp>=25;
+    const batWork=st.PA>=Math.round(LV[S.lv].g*1.7);
+    /* 二刀流任一側達標就進得了明星賽的門。 */
+    const workloadOK=S.pos==='TW'?(pitWork||batWork):(S.pos==='P'?pitWork:batWork);
     let performanceOK=false;
-    if(S.pos==='P'){
+    if(S.pos==='P'||S.pos==='TW'){
       const era=baseballERA(st)??99;
+      const AS=starTh(S.lv);
       performanceOK=isSP()
-        ? st.IP>=80&&era<=4.00
-        : st.G>=30&&era<=3.80&&((st.SV||0)>=10||(st.HLD||0)>=10||d>=2);
-    }else{
+        ? st.IP>=80&&era<=AS.eraSP
+        : gp>=30&&era<=AS.eraRP&&((st.SV||0)>=10||(st.HLD||0)>=10||d>=2);
+    }
+    if(S.pos!=='P'&&!performanceOK){
       const obp=st.PA>0?(st.H+st.BB)/st.PA:0;
       const ops=obp+slgOf(st);
-      performanceOK=st.PA>=300&&(st.avg>=0.260||ops>=0.750||st.HR>=15||st.SB>=15);
+      const AS=starTh(S.lv);
+      performanceOK=st.PA>=300&&(st.avg>=AS.avg||ops>=AS.ops||st.HR>=AS.hr||st.SB>=15);
     }
     let asP=0;
     if(workloadOK){
@@ -89,7 +115,7 @@ export function awards(bucket,st){
 
   /* 2. 投手個人獎項 */
   let pitcherTripleCrown=false;
-  if(S.pos==='P'){
+  if(S.pos==='P'||S.pos==='TW'){
     if(isSP() && st.IP >= th.g){
       let p=awardP(st.era,th.era[0],th.era[1],30,true);
       if(p>0&&p<100)p=clamp(p+(st.IP-th.g)*0.35,30,95);
@@ -139,7 +165,8 @@ export function awards(bucket,st){
     { const paGate=Math.round(LV[S.lv].g*3.6);
       if(st.PA >= paGate){
         const obp0=st.PA>0?(st.H+st.BB)/st.PA:0, ops0=obp0+slgOf(st);
-        let p=awardP(ops0,0.900,1.050,30);
+        const BOY=starTh(S.lv).boyOps;
+        let p=awardP(ops0,BOY[0],BOY[1],30);
         if(p>0&&p<100)p=clamp(p+(st.PA-paGate)*0.08,30,95);
         if(p===100&&st.PA<paGate*1.15)p=95;
         if(chance(p)) h.push(`${y} ${bestBatterName}`);
@@ -200,32 +227,54 @@ export function awards(bucket,st){
     }
   }
 
-  /* 4. 年度 MVP（最高榮譽）：先通過真實成績門檻，再與聯盟其他球員競爭。 */
-  const isReliever=S.pos==='P'&&!isSP();
-  let mvpQual=false;
-  if(S.pos==='P'){
-    if(isSP()){
-      mvpQual=st.IP>=140&&st.era<=3.20&&(st.W>=12||st.SO>=th.so[0]);
-    }else{
-      mvpQual=st.G>=50&&st.era<=2.20&&((st.SV||0)>=35||(st.HLD||0)>=30);
+  /* 3.5 二天一流：同一年投打雙三冠。
+     這個判定必須放在投手三冠與打擊三冠都算完之後，而且只有二刀流碰得到——
+     單刀球員不可能同時滿足兩邊的資格門檻（規定局數與規定打席）。
+     名字取自宮本武藏自創的流派，「二刀流」這個詞就是從二天一流來的。 */
+  if(pitcherTripleCrown&&hitterTripleCrown){
+    h.push(`${y} ${lgN}二天一流`);
+    if(!S.nitenichiLeagues)S.nitenichiLeagues=[];
+    if(!S.nitenichiLeagues.includes(lgN)){
+      S.nitenichiLeagues=[...S.nitenichiLeagues,lgN];
+      S.traits.nitenichi=true;
+      /* 文案由專案擁有者撰寫，2026-09-17 改寫。巖流島是宮本武藏與佐佐木小次郎
+         決鬥的地方，二天一流是他自創的流派——「二刀流」這個詞就是從那裡來的。 */
+      card('gold',`隱藏屬性解鎖：${lgN}二天一流`,
+        `勝投、防禦率、三振——投手三冠。打擊率、全壘打、打點——打擊三冠。`+
+        `<br><br>你已經將兩把刀都修鍊到了極致。`+
+        `<br><br>棒球場就是你的巖流島，與你對決的對手都折戟於此。`+
+        `<br><br>宮本武藏的二天一流，在現代被你重現在這個紅土上——`+
+        `<b class="hl">${lgN}二天一流</b>，棒球的現在、過去、與未來，你刻下了你的姓名。`);
     }
-  }else{
-    const obp=st.PA>0?(st.H+st.BB)/st.PA:0;
-    const ops=obp+slgOf(st);
-    mvpQual=st.PA>=LV[S.lv].g*3.6&&(
-      ops>=0.850||
-      st.HR>=th.hr[0]||
-      (st.avg>=th.avg[0]&&st.RBI>=th.rbi[0])
-    );
   }
-  if(pitcherTripleCrown||hitterTripleCrown){
-    /* 投手/打擊三冠王：必得年度MVP，不再走機率判定。 */
+
+  /* 4. 年度 MVP（最高榮譽）：先通過真實成績門檻，再與聯盟其他球員競爭。 */
+  const MV=starTh(S.lv);
+  const isReliever=S.pos==='P'&&!isSP();
+  const pitchMvpQual=()=>isSP()
+    ? st.IP>=140&&st.era<=MV.mvpEra&&(st.W>=12||st.SO>=th.so[0])
+    : pitG(st)>=50&&st.era<=MV.clEra&&((st.SV||0)>=35||(st.HLD||0)>=30);
+  const batMvpQual=()=>{
+    const obp=st.PA>0?(st.H+st.BB)/st.PA:0, ops=obp+slgOf(st);
+    return st.PA>=LV[S.lv].g*3.6&&(ops>=MV.mvpOps||st.HR>=th.hr[0]||(st.avg>=th.avg[0]&&st.RBI>=th.rbi[0]));
+  };
+  /* 二刀流:任一側達到 MVP 門檻就有資格。單側就夠格已經是聯盟最頂的成績，
+     再要求兩側同時達標等於把 MVP 從二刀流手上拿掉。 */
+  let mvpQual=S.pos==='TW'?(pitchMvpQual()||batMvpQual())
+            :S.pos==='P'?pitchMvpQual():batMvpQual();
+  /* 同一年拿下年度最佳投手＋年度最佳打者，等於聯盟同時認定你是最強的投手與最強的打者，
+     那已經沒有比他更有資格拿 MVP 的人了。實務上只有二刀流碰得到：單刀球員不可能
+     同時滿足規定投球局數與規定打席。門檻比「二天一流」（投打雙三冠、一季六個王）低，
+     因為三冠裡拿到兩項就會保底該側的年度最佳，所以這條是兩邊各兩項即可。 */
+  const bothBest=h.includes(`${y} ${aceName}`)&&h.includes(`${y} ${bestBatterName}`);
+  if(pitcherTripleCrown||hitterTripleCrown||bothBest){
+    /* 投手/打擊三冠王、或投打雙料年度最佳：必得年度MVP，不再走機率判定。 */
     h.push(`${y} ${lgN}年度MVP`);
   }else if(mvpQual&&S.seasonFactor>=0.9){
     if(isReliever){
       /* 後援 MVP 保持極低機率，且必須先達神級救援／中繼實績。 */
       const pMVP=clamp(
-        0.5+Math.max(0,st.d-10)*0.4+Math.max(0,2.20-st.era)*2+
+        0.5+Math.max(0,st.d-10)*0.4+Math.max(0,MV.clEra-st.era)*2+
         Math.max(0,(st.SV||0)-35)*0.08+Math.max(0,(st.HLD||0)-30)*0.04,
         0.5,5
       );
@@ -236,23 +285,33 @@ export function awards(bucket,st){
     }
   }
 
-  /* 5. 新人王：一般情況依 d 值抽選；橫掃級新人不會因獨立亂數漏獎。 */
-  const rookieOK=bucket!=='CPBL'||!(S.stats.NPB||S.stats.MLB||S.stats.MINOR);
-  if(S.stats[bucket].yr===1&&rookieOK){
+  /* 5. 新人王：先通過聯盟資歷與實際工作量，再判定獲獎；年度 MVP 只在合格後保底。 */
+  const leagueRookie=S.stats[bucket].yr===1, rookieAward=`${y} ${lgN}新人王`;
+  const annualMvpAwarded=h.some(x=>x===`${y} ${lgN}年度MVP`);
+  const rookieOK=rookieLeagueEligible(bucket,S.stats)&&rookieWorkloadEligible(bucket,st,S.pos,S.role);
+  if(leagueRookie&&rookieOK&&annualMvpAwarded&&!h.includes(rookieAward)){
+    h.push(rookieAward);
+  }else if(leagueRookie&&rookieOK){
     const rkP=rookieAwardGuaranteed(h,y,lgN)?100:awardP(st.d,4,10,30);
-    if(chance(rkP)) h.push(`${y} ${lgN}新人王`);
+    if(chance(rkP)) h.push(rookieAward);
   }
 
   /* 6. 後續獲獎觸發特質 */
   const added=h.filter(x=>x.startsWith(String(y)));
-  if(added.length){ card('gold','年度獎項',added.map(x=>x.slice(5)).join('｜'));
+  if(added.length){
+    /* 年度獎項卡也依投打分段。同一張卡裡投手獎跟打擊獎串成一長條讀不出來誰是誰，
+       二刀流尤其明顯。只有一段時不印小標，單刀球員的卡維持原樣。
+       分組規則與「目前成就」「結算卡」共用 award-rules.js 的 honorSide()。 */
+    const secs=splitBySide(added.map(x=>x.slice(5)));
+    card('gold','年度獎項', secs.length===1
+      ? secs[0].items.join('｜')
+      : secs.map(sec=>`<b class="hl">${sec.name}</b><br>${sec.items.join('｜')}`).join('<br><br>'));
     const topAw=added.find(x=>/年度MVP/.test(x))||added.find(x=>/最佳投手|最佳打者|王/.test(x))||added.find(x=>/新人王/.test(x))||added[0];
     tlNote(3,topAw.slice(5));
     if(S.traits.yips){ removeTrait('yips','失憶症'); card('good','走出陰影','站上大舞台拿下獎項的那一刻，腦海裡的雜音消失了——<b class="hl">失憶症痊癒</b>。'); }
-    if(S.traits.glass&&!S.traits.phoenix){ const big=added.some(x=>/MVP|最佳投手|最佳打者|打擊王|全壘打王|新人王/.test(x));
-      if(big){ S.traits.phoenix=true; removeTrait('glass','玻璃人');
+    if(canUnlockPhoenix(added)){ S.traits.phoenix=true; removeTrait('glass','玻璃人');
         S.pool+=8;
-        card('gold','隱藏屬性解鎖：浴火重生','那些殺不死你的，真的讓你更強大了。受傷的地方逐漸痊癒，長成了更強壯的形狀。——<b class="hl">玻璃人懲罰解除，受傷率恢復正常，並獲得一大筆能力點</b>。'); } }
+        card('gold','隱藏屬性解鎖：浴火重生','那些殺不死你的，真的讓你更強大了。受傷的地方逐漸痊癒，長成了更強壯的形狀。——<b class="hl">玻璃人懲罰解除，受傷率恢復正常，並獲得一大筆能力點</b>。'); }
     const annualMvp=added.some(x=>/年度MVP/.test(x));
     if(annualMvp&&S.age>=35&&!S.traits.oldghost&&!S.oldGhostUsed){
       S.oldGhostPending=true;

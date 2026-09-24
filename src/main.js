@@ -1,13 +1,13 @@
-import {SEED, setSeed, seedInit} from './core/rng.js?v=1.5.6';
-import {S, setS, newState} from './core/state.js?v=1.5.6';
-import {APP_VER} from './config.js?v=1.5.6';
-import {POSN} from './data/abilities.js?v=1.5.6';
-import {LV} from './data/teams.js?v=1.5.6';
-import {$, card, modalClose, actToggleSync} from './ui/dom.js?v=1.5.6';
-import {THEME_KEY, BIG_KEY, applyTheme, applyMobileUI, applyBigText, updDispSum} from './ui/prefs.js?v=1.5.6';
-import {allocFullClose} from './ui/alloc.js?v=1.5.6';
-import {TL, resetTL, renderTimeline, tlScrollTo} from './ui/timeline.js?v=1.5.6';
-import {startYear} from './flow/phases.js?v=1.5.6';
+import {SEED, setSeed, seedInit} from './core/rng.js?v=2.0.11';
+import {S, setS, newState} from './core/state.js?v=2.0.11';
+import {APP_VER} from './config.js?v=2.0.11';
+import {POSN} from './data/abilities.js?v=2.0.11';
+import {LV} from './data/teams.js?v=2.0.11';
+import {$, card, modalClose, actToggleSync} from './ui/dom.js?v=2.0.11';
+import {THEME_KEY, BIG_KEY, applyTheme, applyMobileUI, applyBigText, updDispSum} from './ui/prefs.js?v=2.0.11';
+import {allocFullClose} from './ui/alloc.js?v=2.0.11';
+import {TL, resetTL, renderTimeline, tlScrollTo} from './ui/timeline.js?v=2.0.11';
+import {startYear} from './flow/phases.js?v=2.0.11';
 
 /* ================= 開場設定 ================= */
 /* iOS Safari zoom guards. Pinch: Safari ignores maximum-scale/user-scalable, so the
@@ -57,28 +57,44 @@ import {startYear} from './flow/phases.js?v=1.5.6';
   (function(){ const det=document.getElementById('fld-display'); if(!det)return;
     const body=document.getElementById('disp-body'), sum=det.querySelector('summary');
     if(!body||!sum)return; let anim=null;
+    const sync=on=>{ body.hidden=!on; sum.setAttribute('aria-expanded',on?'true':'false'); };
+    const focusPref=()=>{ (body.querySelector('#seg-theme button.on')||body.querySelector('button'))?.focus(); };
+    sync(det.open);
+    det.addEventListener('toggle',()=>{ if(!anim)sync(det.open); });
     sum.addEventListener('click',ev=>{
       if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
       ev.preventDefault();
       if(anim){ anim.cancel(); anim=null; }
       const opening=!det.open;
-      if(opening)det.open=true;
+      if(opening){ det.open=true; sync(true); }
       const h=body.getBoundingClientRect().height;
       body.style.overflow='hidden';
       anim=body.animate({height:opening?['0px',h+'px']:[h+'px','0px'],
         opacity:opening?[0,1]:[1,0]},{duration:280,easing:'ease'});
-      anim.onfinish=()=>{ body.style.overflow=''; anim=null; if(!opening)det.open=false; };
+      anim.onfinish=()=>{ body.style.overflow=''; anim=null; if(!opening){ det.open=false; sync(false); } };
+    });
+    sum.addEventListener('keydown',ev=>{
+      if(ev.key!=='Enter'&&ev.key!==' ')return;
+      const opening=!det.open;
+      ev.preventDefault(); sum.click();
+      if(opening)setTimeout(focusPref,matchMedia('(prefers-reduced-motion: reduce)').matches?0:300);
     }); })();
   let t='a'; try{t=localStorage.getItem(THEME_KEY)||'a';}catch(e){}
   document.querySelectorAll('#seg-theme button').forEach(b=>b.onclick=()=>applyTheme(b.dataset.t));
   applyTheme(t);
   ['tl-list','tl-strip'].forEach(id=>{ const el=$(id);
-    if(el)el.onclick=ev=>{ const n=ev.target.closest('[data-i]'); if(n)tlScrollTo(TL[+n.dataset.i]); }; });
+    if(el)el.onclick=ev=>{ const n=ev.target.closest('[data-i]'); if(n)tlScrollTo(TL[+n.dataset.i]); };
+    if(el)el.onkeydown=ev=>{ if(ev.key!=='Enter'&&ev.key!==' ')return;
+      const n=ev.target.closest('[data-i]'); if(!n)return;
+      ev.preventDefault(); tlScrollTo(TL[+n.dataset.i]); }; });
   const md=$('modal'); if(md)md.onclick=ev=>{ if(ev.target===md)modalClose(); };
   document.addEventListener('keydown',ev=>{ if(ev.key==='Escape'){ modalClose(); allocFullClose(); } });
 })();
 let selPos='P';
-const DEFAULT_PLAYERS={P:{name:'有有子',jersey:11},IF:{name:'抹茶多',jersey:13}};
+/* 姓名與背號都留空時的預設球員。TW 有自己的一組——原本沒有，
+   二刀流會掉到下面那組隨機的野手名字（藥帝士／黃鎖頭），跟身分完全對不上。
+   背號 17 是二刀流的那個號碼。 */
+const DEFAULT_PLAYERS={P:{name:'有有子',jersey:11},IF:{name:'抹茶多',jersey:13},TW:{name:'大骨湯',jersey:17}};
 const DEFAULT_PLAYER_PAIRS=[
   DEFAULT_PLAYERS.P,DEFAULT_PLAYERS.IF,{name:'藥帝士',jersey:23},{name:'黃鎖頭',jersey:22}
 ];
@@ -95,10 +111,40 @@ try{
 }catch(e){}
 $('seed-show').value=SEED;
 $('seed-re').onclick=e=>{e.preventDefault();setSeed(Math.random().toString(36).slice(2,10));$('seed-show').value=SEED;};
-document.querySelectorAll('#seg-pos button').forEach(b=>b.onclick=()=>{
-  document.querySelectorAll('#seg-pos button').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on'); selPos=b.dataset.v;
-});
+function bindPosSeg(){
+  document.querySelectorAll('#seg-pos button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#seg-pos button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); selPos=b.dataset.v;
+  });
+}
+bindPosSeg();
+/* ── 二刀流入口 ──
+   v2.0.5 起就是守位列的第五顆按鈕：它跟其他四個互斥、行為一樣，沒有理由做成
+   另一種控制項。差別只有底部一條金線，以及選中時多出的一行說明——
+   平常首頁保持安靜，不用一段文字去解釋一個還沒被選的選項。
+
+   標題連點七下的舊捷徑留著：它現在就是「幫你按下第五顆」，行為完全一致。
+   刻意不寫 localStorage，重整就回到單刀，見 docs/twoway-design.md §6。 */
+(()=>{
+  const logo=$('logo-tap'), seg=$('seg-pos'), hint=$('tw-hint');
+  if(!seg)return;
+  const sync=()=>{ if(hint)hint.hidden=selPos!=='TW'; };
+  sync();
+  seg.addEventListener('click',sync);       /* bindPosSeg 先改 selPos，這裡再跟著顯示 */
+  if(logo){
+    let taps=0,last=0;
+    /* 不改 cursor——這是彩蛋，不該讓標題看起來可以點。只擋掉連點造成的文字反白。 */
+    logo.style.userSelect='none'; logo.style.webkitUserSelect='none';
+    logo.addEventListener('click',()=>{
+      const now=Date.now();
+      taps=(now-last>1500)?1:taps+1; last=now; /* 中斷超過 1.5 秒就重數，避免誤觸累積 */
+      if(taps<7)return;
+      taps=0;
+      const tw=seg.querySelector('button[data-v="TW"]'); if(tw)tw.click();
+      seg.scrollIntoView({block:'nearest',behavior:'smooth'});
+    });
+  }
+})();
 $('btn-start').onclick=()=>{
   const sv=$('seed-show').value.trim(); if(sv)setSeed(sv); /* 玩家可直接輸入流水碼 */
   history.replaceState(null,'','?seed='+encodeURIComponent(SEED));
@@ -165,7 +211,7 @@ $('btn-start').onclick=()=>{
 })();
 (function(){ const vb=document.getElementById('ver-badge'); if(vb)vb.textContent=APP_VER;
   const tv=document.getElementById('tl-ver'); if(tv)tv.textContent=APP_VER;
-  const lv=document.getElementById('lm-ver'); if(lv)lv.textContent=APP_VER; })();
+  const gv=document.getElementById('game-ver'); if(gv)gv.textContent=APP_VER; })();
 /* touch has no hover: tap the salary cell to reveal the full amount, tap again to close.
    Never dismisses on a timer — the user decides when it goes away. */
 (function(){ const cell=document.getElementById('bd-sal-cell'); if(!cell)return;

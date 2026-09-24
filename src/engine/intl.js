@@ -1,21 +1,38 @@
-import {S} from '../core/state.js?v=1.5.6';
-import {R, ri, chance, clamp} from '../core/rng.js?v=1.5.6';
-import {LV} from '../data/teams.js?v=1.5.6';
-import {card, choose, board} from '../ui/dom.js?v=1.5.6';
-import {tlNote} from '../ui/timeline.js?v=1.5.6';
-import {isSP, fmtIP, outsFromIP, ipFromOuts, normalizeIP, baseballERA} from './season.js?v=1.5.6';
-import {ovr} from './ability.js?v=1.5.6';
-import {intlFinishIndex} from './championship.js?v=1.5.6';
-import {checkChampionTrait} from '../flow/events.js?v=1.5.6';
+import {S} from '../core/state.js?v=2.0.11';
+import {R, ri, chance, clamp, N0} from '../core/rng.js?v=2.0.11';
+import {LV, envRate, envAvg, envHR9, ENV_K} from '../data/teams.js?v=2.0.11';
+import {card, choose, board} from '../ui/dom.js?v=2.0.11';
+import {tlNote} from '../ui/timeline.js?v=2.0.11';
+import {isSP, fmtIP, outsFromIP, ipFromOuts, normalizeIP, baseballERA} from './season.js?v=2.0.11';
+import {ovr} from './ability.js?v=2.0.11';
+import {intlFinishIndex} from './championship.js?v=2.0.11';
+import {checkChampionTrait} from '../flow/events.js?v=2.0.11';
+/* 這一屆算不算二刀流：同一屆裡既有登板也有打席。二刀流在退休前多半已被強制轉回，
+   所以跟 career.isTwoWayCareer() 一樣，看的是實績而不是當下的 S.pos。 */
+export const twIntl=st=>!!(st&&(st.GP||0)>0&&(st.PA||0)>0&&(st.IP||0)>0);
+export function intlWalks(st){
+  if(!st)return 0;
+  if(Number.isFinite(st.BB))return Math.max(0,Math.round(st.BB));
+  /* v1.5.8 舊存檔沒有寫入 BB；打者可由當屆 PA−AB 還原，投手則無足夠資料可回推。 */
+  if(Number.isFinite(st.PA)&&Number.isFinite(st.AB))return Math.max(0,Math.round(st.PA-st.AB));
+  return 0;
+}
 export function intlStatLine(st){
+  if(twIntl(st)){
+    const era=baseballERA(st);
+    return `投 ${st.GP} 場｜${fmtIP(st.IP)} 局｜${st.W} 勝｜${st.SO} 三振｜ERA ${era==null?'-':era.toFixed(2)}`+
+      `　／　打 ${st.G} 場｜${st.PA} 打席｜打擊率 ${st.AB>0?(st.H/st.AB).toFixed(3).replace(/^0/,''):'-'}｜${st.HR} 轟｜${st.RBI} 打點`;
+  }
   if(S.pos==='P'){
     const era=baseballERA(st);
-    return `出賽 ${st.G}｜${fmtIP(st.IP)} 局｜${st.W} 勝｜${st.SV} 救援｜${st.SO} 三振｜ERA ${era==null?'-':era.toFixed(2)}`;
+    return `出賽 ${st.G}｜${fmtIP(st.IP)} 局｜${st.W} 勝｜${st.SV} 救援｜${st.SO} 三振｜${intlWalks(st)} 保送｜ERA ${era==null?'-':era.toFixed(2)}`;
   }
   const avg=st.AB>0?(st.H/st.AB).toFixed(3).replace(/^0/,''):'-';
-  return `出賽 ${st.G}｜${st.PA} 打席｜打擊率 ${avg}｜${st.H} 安｜${st.HR} 轟｜${st.RBI} 打點`;
+  return `出賽 ${st.G}｜${st.PA} 打席｜打擊率 ${avg}｜${st.H} 安｜${st.HR} 轟｜${st.RBI} 打點｜${intlWalks(st)} 保送`;
 }
 export function addIntlStat(st){
+  /* 載入舊存檔後第一次再打國際賽時，先把過往打者保送補回通算，避免只累加新賽事。 */
+  if(!Number.isFinite(S.intlStat.BB))S.intlStat.BB=(S.intlLog||[]).reduce((n,r)=>n+intlWalks(r.st),0);
   const oldOuts=outsFromIP(S.intlStat.IP);
   Object.keys(st).forEach(k=>{ if(k!=='IP')S.intlStat[k]=(S.intlStat[k]||0)+st[k]; });
   if(Object.prototype.hasOwnProperty.call(st,'IP'))S.intlStat.IP=ipFromOuts(oldOuts+outsFromIP(st.IP));
@@ -24,20 +41,26 @@ export function addIntlStat(st){
 export function intlMvpRate(st,finish){
   if(finish>1)return 0; /* 賽會 MVP 原則上只從冠亞軍球隊產生 */
   let score=0;
-  if(S.pos==='P'){
-    const era=baseballERA(st)??9;
-    score=st.IP+st.SO*1.5+st.W*8+st.SV*6+Math.max(0,3.5-era)*5-Math.max(0,era-3.5)*4;
-  }else{
-    const avg=st.AB>0?st.H/st.AB:0;
-    score=st.H*2+st.HR*8+st.RBI*2+Math.max(0,avg-.250)*100;
-  }
+  /* 二刀流：兩側都是他真的打出來的，所以分數相加——跟生涯計分同一個原則。 */
+  /* 參考值改成賽會借用的那個聯盟的平均，不再寫死 3.5 ERA / .250 打擊率。 */
+  const E=LV[intlFormat((S.year-2026)%4===0).lv].env, eraRef=E.era, avgRef=E.avg;
+  const pitScore=()=>{ const era=baseballERA(st)??9;
+    return st.IP+st.SO*1.5+st.W*8+(st.SV||0)*6+Math.max(0,eraRef-era)*5-Math.max(0,era-eraRef)*4; };
+  const batScore=()=>{ const avg=st.AB>0?st.H/st.AB:0;
+    return st.H*2+st.HR*8+st.RBI*2+Math.max(0,avg-avgRef)*100; };
+  if(twIntl(st))score=pitScore()-(st.SV||0)*6+batScore();
+  else if(S.pos==='P')score=pitScore();
+  else score=batScore();
   const finalistMult=finish===0?1:.2;
   return Math.round(clamp((score-28)*1.7,0,75)*finalistMult);
 }
+/* 國際賽借用一個職業聯盟的環境常數(經典賽＝大聯盟、12 強＝日職一軍)，
+   而不是自己再寫一份率值。舊版 intl.js 有一份獨立的 7.5 K/9、4.6 BB/9、.270 打擊率，
+   跟職業球季完全對不起來——同一個球員在同一年的兩張成績單會像兩個人。 */
 export function intlFormat(wbc){
   return wbc
-    ?{minOvr:55,par:LV.MLB.par,ranks:['冠軍','亞軍','四強止步','八強止步','預賽出局'],games:[7,7,6,5,4]}
-    :{minOvr:52,par:LV.NPB1.par,ranks:['冠軍','亞軍','季軍','殿軍','預賽出局'],games:[9,9,9,9,5]};
+    ?{minOvr:55,lv:'MLB',par:LV.MLB.par,ranks:['冠軍','亞軍','四強止步','八強止步','預賽出局'],games:[7,7,6,5,4]}
+    :{minOvr:52,lv:'NPB1',par:LV.NPB1.par,ranks:['冠軍','亞軍','季軍','殿軍','預賽出局'],games:[9,9,9,9,5]};
 }
 export function maybeIntl(done){
   const wbc=(S.year-2026)%4===0; let p12=(S.year-2028)%4===0;
@@ -67,10 +90,13 @@ export function maybeIntl(done){
       /* 先產生並保存本屆成績；事件卡與生涯結算共用同一份資料，不在結算時重骰 */
       let intlSt;
       { const a=S.ab, par=intlFmt.par, clutch=S.traits.clutch?1:0;
-        if(S.pos==='P'){ const dd=(a.vel+a.ctl+a.brk)/3-par;
+        const TW=S.pos==='TW';
+        /* 二刀流在國際賽兩邊都上：投球走先發線(短期賽最多一到兩場先發)，打擊照樣每場先發。
+           被安打／保送存在 pH/pBB，跟職業球季同一個約定——共用 H/BB 會被打擊側蓋掉。 */
+        if(S.pos==='P'||TW){ const dd=(a.vel+a.ctl+a.brk)/3-par;
           /* 【修正】區分先發與後援，並將局數與出賽場次連動，符合國際賽球數限制 */
           let g, ip;
-          if(isSP()){
+          if(isSP()||TW){
             g = teamGames>=6?ri(1,2):1; /* 預賽／八強最多一場先發，進四強或 12 強複賽後才可能二度先發 */
             ip = normalizeIP(g * (4.5 + R() * 2.5)); /* 配合球數限制，單場大約吃 4.5~7 局；量化為完整出局數 */
           } else {
@@ -78,15 +104,33 @@ export function maybeIntl(done){
             ip = normalizeIP(g * (0.8 + R() * 0.8)); /* 每次上場大約拆彈或投 0.8~1.6 局；量化為完整出局數 */
           }
           
-          const k9=clamp(7.5+dd*0.12+clutch*.5,4,14);
-          const era=clamp(3.6-dd*0.16-clutch*.35,0.8,8);
-          intlSt={G:g,IP:ip,SO:Math.round(ip/9*k9),ER:Math.round(era*ip/9),W:i<=2&&chance(45+clutch*8)?1:0,SV:!isSP()&&chance(30+clutch*6)?1:0};
-        } else { const dd=(a.con*0.5+a.pow*0.2+a.eye*0.18+a.spd*0.12)-par-0.5; /* 同步賽季 d 公式(含 pow) */
+          /* 與職業球季共用同一組聯盟環境；短期賽按實際局數縮放。
+             國際賽是各國最強的一群，所以整體再往投手有利的方向推一檔(短期賽、全力投)。 */
+          const E=LV[intlFmt.lv].env, hrLg=envHR9(E), q=(a.vel+a.ctl+a.brk)/3;
+          const k9=Math.max(1.5,envRate(E.k9,a.vel*0.62+a.brk*0.38,par,ENV_K.k9,1)+0.6+clutch*.5);
+          const bb9=Math.max(0.35,envRate(E.bb9,a.ctl,par,ENV_K.bb9,-1)+N0(0.35));
+          const h9=Math.max(3.0,envRate(E.h9,q,par,ENV_K.h9,-1)-0.5+N0(0.45));
+          const hr9=Math.max(0.02,envRate(hrLg,q,par,ENV_K.hr9,-1)*0.85);
+          const era=clamp(E.era+(h9-E.h9)*0.38+(bb9-E.bb9)*0.32+(hr9-hrLg)*1.45-(k9-E.k9)*0.04
+            -clutch*.35+N0(0.25),1.0,9.0);
+          const pit={IP:ip,SO:Math.round(ip/9*k9),pHR:Math.round(ip/9*hr9),ER:Math.round(era*ip/9),
+            W:i<=2&&chance(45+clutch*8)?1:0};
+          intlSt=TW
+            ?{GP:g,...pit,pH:Math.round(ip/9*h9),pBB:Math.round(ip/9*bb9),SV:0}
+            :{G:g,...pit,H:Math.round(ip/9*h9),BB:Math.round(ip/9*bb9),SV:!isSP()&&chance(30+clutch*6)?1:0};
+        }
+        if(S.pos!=='P'){ const E=LV[intlFmt.lv].env;
+          const qb=a.con*0.5+a.pow*0.2+a.eye*0.18+a.spd*0.12; /* 同步賽季的打擊綜合值 */
           const g=teamGames, pa=g*ri(3,4); /* 國家隊球星每場先發，出賽數不得超過該名次的實際賽程 */
-          const ab=Math.round(pa*0.86);
-          const avg=clamp(0.270+dd*0.006+clutch*.015,0.15,0.5), h=Math.round(ab*avg);
-          const hr=Math.round(h*clamp(0.06+Math.max(0,a.pow-par)*0.006+clutch*.01,0.03,0.28));
-          intlSt={G:g,PA:pa,AB:ab,H:h,HR:hr,RBI:Math.round((hr*2.1+h*0.35)*(1+clutch*.05))};
+          /* 與職業球季同式：選球直接決定保送率，並由 PA−BB 得到打數。 */
+          const bb=Math.round(pa*clamp(0.062+(a.eye-par)*0.0034,0.045,0.17));
+          const ab=pa-bb;
+          /* 短期賽的投手強度高一檔，所以打擊率往下推一點、長打不動。 */
+          const avg=clamp(envAvg(E.avg,qb,par)-0.012+clutch*.015,0.12,0.45), h=Math.round(ab*avg);
+          const hrRate=Math.max(0.0012,envRate(E.hr,a.pow,par,ENV_K.hr,1)+clutch*.004);
+          const hr=Math.min(h,Math.round(ab*hrRate));
+          const bat={G:g,PA:pa,AB:ab,H:h,HR:hr,RBI:Math.round((hr*2.1+h*0.35)*(1+clutch*.05)),BB:bb};
+          intlSt=TW?{...intlSt,...bat}:bat;
         }
       }
       addIntlStat(intlSt);
