@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 
 const url=process.env.YAKYOLIFE_URL||'http://127.0.0.1:8124/';
-const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',args:['--disable-gpu']});
+const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||undefined,args:['--disable-gpu']});
 try{
   const page=await browser.newPage({viewport:{width:1280,height:900}});
   const errors=[]; page.on('pageerror',error=>errors.push(error.message));

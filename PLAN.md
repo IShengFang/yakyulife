@@ -2,7 +2,7 @@
 
 核對日期：2026-09-24。程式基準：`b19310f`（合併後 HEAD），版本提交：`9b17859`，`src/config.js` 的 `APP_VER='v2.0.11'`。
 
-**結論：升級到 v2.0.11 後，可用 GitHub Pages 部署，並在完成 PWA 快取與本機存檔後支援 mobile 離線遊玩。** 遊戲運算與資料都在本機，沒有新增必須連線的遊戲 API；但目前仍沒有 Service Worker 或生涯存檔，不能把現有版本視為已完成離線 App。本次更新的是後續實作規格，勾選項均為待完成工作。
+**結論：升級到 v2.0.11 後，可用 GitHub Pages 部署，並在完成 PWA 快取與本機存檔後支援 mobile 離線遊玩。** 遊戲運算與資料都在本機，沒有新增必須連線的遊戲 API；但目前仍沒有 Service Worker 或生涯存檔，不能把現有版本視為已完成離線 App。Phase 0 的程式碼基準已建立；發布與真機閘門仍待維護者確認。
 
 ## 1. 目標與前提
 
@@ -20,7 +20,7 @@
 
 Safari 分頁與主畫面 App 必須各自完成首次連線準備，不假設 Cache Storage／IndexedDB 自動共用；既有 Safari 生涯移往主畫面版以 JSON 匯出／匯入處理。[WebKit Web Apps 資料隔離說明](https://webkit.org/blog/14787/webkit-features-in-safari-17-2/)
 
-## 2. 現況盤點
+## 2. Phase 0 開始前的現況盤點
 
 ### 已存在、應沿用的基礎
 
@@ -43,7 +43,7 @@ Safari 分頁與主畫面 App 必須各自完成首次連線準備，不假設 C
 | `src/core/state.js` 已拆開投／打累積欄位與球季數 | 不可用舊版單刀格式重建或只按目前 `S.pos` 篩掉另一側資料 |
 | UI 與結算圖已支援多主題、大小字及多種輸出模式 | 離線字型降級與恢復後也須可排版、產圖；沿用現有 UI，無須重新設計 |
 
-### 尚未實作的缺口
+### 當時尚未實作的缺口
 
 - manifest 是執行時建立的 Blob，沒有靜態 `manifest.webmanifest`。
 - 沒有 Service Worker，因此無法保證離線啟動，也沒有明確的版本更新策略。
@@ -122,13 +122,13 @@ GitHub Pages 可提供本案的 HTML、CSS、JavaScript 與其他靜態資源，
 
 ### Phase 0 — 建立可重現的基準
 
-- [ ] 將現有 24 支 `tests/*.mjs` 納入固定版本的測試環境；補上 package／lockfile、`AGENTS.md`、setup script 與跨平台 server 啟動入口，保留既有 `YAKYOLIFE_URL` 與預設 `http://127.0.0.1:8124/`。
-- [ ] 提供固定且非互動的命令：`npm run serve`、`npm run test:static`、`npm run test:unit`、`npm run test:regression`（現有 Chromium 測試）、`npm run test:e2e`（Chromium／WebKit）、`npm run test:pwa`（Phase 1 加入）、`npm run check`；CI 與 Codex cloud 必須呼叫相同腳本。
-- [ ] 以 v2.0.11 建立 versioned fixture，記錄規則版本、seed、`P/C/IF/OF/TW`、明確姓名／背號、每次事件選擇與配點／復原序列，以及年份、球隊、能力、投打統計、薪資、榮譽、結局 digest。固定輸入以避開預設姓名使用 `Math.random()` 的差異；視覺骰子動畫不納入遊戲 RNG 比較。
-- [ ] `tools/build-headless.mjs` 可供大量模擬，但它用文字掛鉤取代 `choose()`／`allocUI()`，也略過部分 UI；先核對同一輸入在真實瀏覽器與 headless 的結果。`tools/sim-twoway.mjs` 的自動選擇策略也可能消耗遊戲 RNG，fixture 回放須改用已記錄的輸入，不直接套用校準策略。掛鉤隨流程重構同步更新，不得把 headless 模擬當成離線／配點 UI 驗收。
-- [ ] 最小 WebKit smoke test 由 `http://127.0.0.1` 啟動遊戲、完成第一個穩定互動並檢查 console/page error；禁止以 `file://` 當作 PWA 基準。
-- [ ] 核對此 repository 的 Pages 實際網址；若已綁定則保留 `https://www.yakyolife.com/`，否則依部署契約使用 project site 並同步各網址設定。記錄根目錄及子路徑入口，在 Phase 1 驗證 `?seed=...` 可離線導向同一 app shell。seed 只代表重玩輸入，不是存檔或選擇紀錄。
-- [ ] 在 repo 文件中記錄預期的 GitHub Pages 發布 branch／workflow、custom domain、DNS 與 HTTPS 強制轉址；實際後台狀態由維護者確認。
+- [x] 將現有 24 支 `tests/*.mjs` 納入固定版本的測試環境；補上 package／lockfile、`AGENTS.md`、setup script 與跨平台 server 啟動入口，保留既有 `YAKYOLIFE_URL` 與預設 `http://127.0.0.1:8124/`。
+- [x] 提供固定且非互動的命令：`npm run serve`、`npm run test:static`、`npm run test:unit`、`npm run test:regression`（現有 Chromium 測試）、`npm run test:e2e`（Chromium／WebKit）、`npm run test:pwa`（Phase 1 加入）、`npm run check`；CI 與 Codex cloud 必須呼叫相同腳本。
+- [x] 以 v2.0.11 建立 versioned fixture，記錄規則版本、seed、`P/C/IF/OF/TW`、明確姓名／背號、每次事件選擇與配點／復原序列，以及年份、球隊、能力、投打統計、薪資、榮譽、結局 digest。固定輸入以避開預設姓名使用 `Math.random()` 的差異；視覺骰子動畫不納入遊戲 RNG 比較。
+- [x] `tools/build-headless.mjs` 可供大量模擬，但它用文字掛鉤取代 `choose()`／`allocUI()`，也略過部分 UI；先核對同一輸入在真實瀏覽器與 headless 的結果。`tools/sim-twoway.mjs` 的自動選擇策略也可能消耗遊戲 RNG，fixture 回放須改用已記錄的輸入，不直接套用校準策略。掛鉤隨流程重構同步更新，不得把 headless 模擬當成離線／配點 UI 驗收。
+- [x] 最小 WebKit smoke test 由 `http://127.0.0.1` 啟動遊戲、完成第一個穩定互動並檢查 console/page error；禁止以 `file://` 當作 PWA 基準。
+- [x] 核對此 repository 的 Pages 實際網址；若已綁定則保留 `https://www.yakyolife.com/`，否則依部署契約使用 project site 並同步各網址設定。記錄根目錄及子路徑入口，在 Phase 1 驗證 `?seed=...` 可離線導向同一 app shell。seed 只代表重玩輸入，不是存檔或選擇紀錄。
+- [x] 在 repo 文件中記錄預期的 GitHub Pages 發布 branch／workflow、custom domain、DNS 與 HTTPS 強制轉址；實際後台狀態由維護者確認。
 - [ ] 維護者在 Safari responsive mode 與至少一台實機記錄現有問題，附上 iOS／裝置／顯示模式，避免只憑模擬器改版。
 
 Codex 雲端完成條件：全新 checkout 可由 setup script 建好環境，既有 Chromium 回歸與 WebKit smoke 通過，v2.0.11 fixture 已涵蓋五種開局與二刀流轉換路線，`npm run check` 有實際斷言且通過。發布／真機閘門：維護者確認 Pages／DNS 設定與 iPhone 基準紀錄。

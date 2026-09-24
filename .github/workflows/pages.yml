@@ -35,36 +35,14 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.16.0'
+          cache: npm
 
-      - name: 安裝 Playwright 與 Chromium
-        run: |
-          npm install --no-save playwright
-          npx playwright install --with-deps chromium
+      - name: 建立固定版本測試環境
+        run: bash scripts/codex-setup.sh
 
-      - name: 起本機伺服器並跑 tests/
-        run: |
-          # tests/*.mjs 預設連 http://127.0.0.1:8124/，先把站台服起來
-          python3 -m http.server 8124 --bind 127.0.0.1 &
-          for i in $(seq 1 40); do
-            curl -sf http://127.0.0.1:8124/ >/dev/null && break
-            sleep 0.5
-          done
-          # 測試檔裡的 Chrome 路徑寫的是 Windows；CI 用 Playwright 裝的 Chromium 覆寫
-          CHROME_PATH="$(node -e "console.log(require('playwright').chromium.executablePath())")"
-          export CHROME_PATH
-          echo "Chromium: $CHROME_PATH"
-          fail=0
-          for f in tests/*.mjs; do
-            if node "$f" >/tmp/out.txt 2>&1; then
-              echo "PASS  $f"
-            else
-              echo "FAIL  $f"
-              sed 's/^/        /' /tmp/out.txt | head -20
-              fail=1
-            fi
-          done
-          exit $fail
+      - name: 完整驗證
+        run: npm run check
 
   deploy:
     name: 部署
@@ -78,14 +56,13 @@ jobs:
 
       - name: 組出要上線的檔案
         run: |
-          # 排除只有開發用得到的目錄，其餘（含 CNAME、assets、css、src）原樣帶上
+          # 排除開發工具與測試；CNAME 留作紀錄，實際自訂網域由 Pages 後台設定。
           mkdir -p _site
           tar -cf - \
             --exclude=./.git --exclude=./.github --exclude=./tests \
-            --exclude=./docs --exclude=./node_modules --exclude=./_site \
+            --exclude=./docs --exclude=./scripts --exclude=./node_modules --exclude=./_site \
+            --exclude=./package.json --exclude=./package-lock.json --exclude=./AGENTS.md \
             . | tar -xf - -C _site
-          # CNAME 決定自訂網域，掉了整個站會變回 *.github.io
-          test -f _site/CNAME || { echo "✗ CNAME 不見了，中止部署"; exit 1; }
           test -f _site/index.html || { echo "✗ index.html 不見了，中止部署"; exit 1; }
           echo "將上線的頂層項目："
           ls -1 _site

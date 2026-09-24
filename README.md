@@ -2,7 +2,7 @@
 
 這是一款純文字的棒球生涯養成遊戲。玩家將從高中開始，經歷選秀、旅外、國際賽，直到引退，體驗每一次擲骰與選擇帶來的棒球人生。
 
-點我直接遊玩👉 **[yakyolife.com](https://www.yakyolife.com/)** 
+此 fork 的預計 Pages 網址：**[ishengfang.github.io/yakyulife](https://ishengfang.github.io/yakyulife/)**（Pages 尚待啟用與部署）。目前正式版可在 [yakyolife.com](https://www.yakyolife.com/) 遊玩。
 
 ## 遊戲特色
 * **多層級聯賽**：完整模擬高中、大學、業餘成棒、中職、日職與大聯盟的升降級與合約交涉。
