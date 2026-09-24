@@ -16,11 +16,12 @@ assert.notEqual(releaseA.buildId,releaseB.buildId);
 assert.equal(releaseA.appVersion,releaseB.appVersion);
 const buildOf=page=>page.locator('meta[name="yakyulife-build"]').getAttribute('content');
 const waitStatus=(page,text)=>page.waitForFunction(text=>document.getElementById('pwa-status')?.textContent.includes(text),text,{timeout:30000});
+const waitOffline=(page,state)=>page.waitForFunction(state=>document.getElementById('pwa-offline')?.dataset.state===state,state,{timeout:30000});
 const update=page=>page.evaluate(async()=>{const r=await navigator.serviceWorker.getRegistration();await r.update();});
-const ready=async page=>{
-  await waitStatus(page,'離線資源已備妥');
-  await page.locator('#pwa-action').click();
-  await waitStatus(page,'可離線使用');
+const assertOfflineReady=async page=>{
+  await waitOffline(page,'ready');
+  assert.equal(await page.locator('#pwa-offline').isVisible(),true);
+  assert.match(await page.locator('#pwa-offline').textContent(),/可離線遊玩/);
 };
 const closeServer=server=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});
 const launch=profile=>chromium.launchPersistentContext(profile,{headless:true,reducedMotion:'reduce'});
@@ -59,10 +60,12 @@ try{
     holdWorker=new Promise(resolve=>{releaseWorker=resolve;});
     const playing=await context.newPage();
     await playing.goto(url);
+    assert.equal(await playing.locator('#pwa-offline').isVisible(),true,'offline status stays visible during installation');
     await playing.locator('#btn-start').click();
     await playing.locator('#act .btn').first().waitFor();
     releaseWorker();holdWorker=null;
     await waitStatus(playing,'離線資源已備妥');
+    await waitOffline(playing,'activation');
     assert.equal(await playing.evaluate(()=>!!navigator.serviceWorker.controller),false);
     await playing.locator('#pwa-action').click();
     assert.equal(await playing.locator('#start').evaluate(el=>el.style.display),'none');
@@ -73,9 +76,52 @@ try{
     const page=await context.newPage();
     await page.goto(url);
     await waitStatus(page,'可離線使用');
+    await assertOfflineReady(page);
+    const offline=page.locator('#pwa-offline'),details=page.locator('#pwa-details');
+    assert.equal(await offline.getAttribute('aria-controls'),'pwa-details');
+    assert.equal(await offline.getAttribute('aria-expanded'),'false');
+    assert.equal(await details.isHidden(),true);
+    await offline.click();
+    assert.equal(await offline.getAttribute('aria-expanded'),'true');
+    assert.equal(await details.isVisible(),true);
+    assert.equal(await page.locator('#pwa-connection').textContent(),'目前已連線');
+    assert.ok((await page.locator('#pwa-help').textContent()).trim(),'offline help explains the current state');
+    try{
+      await context.setOffline(true);
+      await page.waitForFunction(()=>document.getElementById('pwa-connection')?.textContent==='目前無網路連線');
+      await assertOfflineReady(page);
+    }finally{await context.setOffline(false);}
+    await page.waitForFunction(()=>document.getElementById('pwa-connection')?.textContent==='目前已連線');
+    await offline.click();
+    assert.equal(await offline.getAttribute('aria-expanded'),'false');
+    assert.equal(await details.isHidden(),true);
+    await assertOfflineReady(page);
     assert.equal(await buildOf(page),releaseA.buildId);
     const cacheName='yakyulife:'+encodeURIComponent(url)+':'+releaseA.buildId;
     assert.equal(await page.evaluate(async name=>(await (await caches.open(name)).keys()).length,cacheName),releaseA.resources.length);
+    // A controller alone cannot guarantee offline play: rechecking must detect a
+    // missing cached resource and recover once that exact response is restored.
+    await page.evaluate(async name=>{
+      const cache=await caches.open(name);
+      const request=(await cache.keys()).find(r=>new URL(r.url).pathname.endsWith('/manifest.webmanifest'));
+      if(!request)throw new Error('Missing manifest cache fixture');
+      window.__pwaCacheEntry={request,response:await cache.match(request)};
+      await cache.delete(request);
+    },cacheName);
+    try{
+      await offline.click();
+      await waitOffline(page,'unavailable');
+      assert.doesNotMatch(await offline.textContent(),/可離線遊玩/);
+    }finally{
+      await page.evaluate(async name=>{
+        const {request,response}=window.__pwaCacheEntry;
+        await (await caches.open(name)).put(request,response);
+        delete window.__pwaCacheEntry;
+      },cacheName);
+    }
+    await offline.click();
+    await offline.click();
+    await assertOfflineReady(page);
     assert.ok(requests.some(x=>x.includes('Phosphor.woff2')),'real font precache request');
     const manifest=await page.evaluate(async()=>await (await fetch('manifest.webmanifest')).json());
     assert.equal(manifest.start_url,'./');
@@ -96,6 +142,7 @@ try{
       fault=failure;
       await update(page);
       await waitStatus(page,'離線下載未完成');
+      await assertOfflineReady(page);
       assert.equal(await page.evaluate(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting),false);
       assert.equal(await page.evaluate(async build=>(await caches.keys()).some(k=>k.endsWith(build)),releaseB.buildId),false);
       await page.reload();
@@ -112,15 +159,27 @@ try{
     },{url,build:releaseB.buildId});
     await update(page);
     await waitStatus(page,'新版本可用');
+    await assertOfflineReady(page);
     // Waiting must never expose the newer network HTML, including ?seed navigation.
     await page.goto(new URL('?seed=waiting-shell',url).href);
     await waitStatus(page,'新版本可用');
+    await assertOfflineReady(page);
     assert.equal(await buildOf(page),releaseA.buildId);
     const other=await context.newPage();
     await other.goto(url);
     await waitStatus(other,'新版本可用');
     await other.locator('#btn-start').click();
     await other.locator('#act .btn').first().waitFor();
+    let careerReloads=0;
+    other.on('framenavigated',frame=>{if(frame===other.mainFrame())careerReloads++;});
+    const careerActions=await other.locator('#act').textContent();
+    await other.locator('#pwa-offline').click();
+    await assertOfflineReady(other);
+    assert.equal(await other.locator('#pwa-details').isVisible(),true);
+    assert.equal(await other.locator('#start').evaluate(el=>el.style.display),'none','checking offline readiness preserves an unsaved career');
+    assert.equal(await other.locator('#act').textContent(),careerActions);
+    assert.equal(careerReloads,0,'checking offline readiness must not reload the page');
+    await waitStatus(other,'新版本可用');
     await page.locator('#pwa-action').click();
     await waitStatus(page,'更新已延後');
     assert.equal(await buildOf(other),releaseA.buildId);
@@ -163,6 +222,7 @@ try{
       const fixture=JSON.parse(await fs.readFile(new URL(`../fixtures/${id}.json`,import.meta.url)));
       const result=await runCareer(url,fixture,false,{browser:context,realNetwork:true,afterCareer:async p=>{
         await waitStatus(p,'可離線使用');
+        await assertOfflineReady(p);
         // Offline icons must actually resolve to local font glyphs.
         assert.equal(await p.evaluate(async()=>{
           await document.fonts.load('16px Phosphor');
@@ -179,7 +239,7 @@ try{
       assert.deepEqual(result.years.map(x=>({year:x.year,digest:digest(x)})),fixture.yearDigests);
     }
     await context.close();context=null;
-    console.log(`PASS ${base}: install, seed, full cache, three download failures, waiting shell, multi-tab vote/reload, cleanup, rollback, persistent offline careers + PNG`);
+    console.log(`PASS ${base}: install, offline status/details, network transitions, cache recheck, seed, three download failures, waiting shell, multi-tab vote/reload, cleanup, rollback, persistent offline careers + PNG`);
   }
 
   const local=await startServer({port:0,directory:a});server=local.server;
@@ -191,7 +251,11 @@ try{
         value:()=>Promise.reject(new Error('Registration denied'))}));
       const errors=[];p.on('pageerror',e=>errors.push(e.message));
       await p.goto(local.url);
-      if(fail)await waitStatus(p,'離線尚未就緒，可連線遊玩');
+      if(fail){
+        await waitStatus(p,'離線尚未就緒，可連線遊玩');
+        await waitOffline(p,'unavailable');
+        assert.equal(await p.locator('#pwa-offline').isVisible(),true);
+      }
       await p.locator('#btn-start').click();await p.locator('#act .btn').first().waitFor();
       if(fail){
         await p.locator('#pwa-action').click();

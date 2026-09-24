@@ -14,7 +14,7 @@
 ## 離線與更新協定
 
 1. 原始碼 server 不註冊 worker；使用 `SITE_ROOT=_site npm run serve` 驗收產物。靜態 manifest、worker URL 與 scope 均相對部署目錄，支援 `/` 與 `/yakyulife/`。
-2. 初裝不執行 `clients.claim()`，不接管已在玩的未受控頁面。完整快取就緒後，玩家在首頁或引退後按「啟用離線模式」重新載入。只有 controller 的 build ID 與目前頁面相同、且快取重新核驗成功，才顯示「可離線使用」。
+2. 初裝不執行 `clients.claim()`，不接管已在玩的未受控頁面。完整快取就緒後，玩家在首頁或引退後按「啟用離線模式」重新載入。只有 controller 的 build ID 與目前頁面相同、且快取重新核驗成功，狀態按鈕才顯示「可離線遊玩」。按鈕在首頁與遊戲中持續顯示，展開說明時重新檢查快取；連線／斷線和回到分頁時也更新判定。更新通知與現役版本的離線狀態分開顯示，原始碼模式或不支援時明確顯示尚未就緒。
 3. 受控根目錄／`index.html` 導覽固定回傳 active shell，瀏覽器保留 `?seed=`；其他導覽不作 shell fallback。JS／CSS 嚴格匹配完整 query，缺檔回 404，從不將新版網路 bytes 填回現役 cache。
 4. 新版本安裝完成進入 waiting，玩家按更新才開始協調。worker 詢問 scope 內所有 client，包含未受控頁面；首頁／引退頁暫時鎖住操作後回覆安全，進行中、未知或無回覆頁面都延後更新。再次核對 client 集合與有效期限後才 `skipWaiting()`。
 5. 通過協調的頁面在啟用後各重新載入一次。協調失敗會解除鎖定；頁面鎖有期限，避免 initiating tab／worker 中斷後無法操作。競態中仍存在的舊文件可使用帶 build ID 的舊模組快取；不會因控制者切換取得新版模組。
@@ -39,6 +39,8 @@
 - 最後補上註冊失敗時「重試」也不得重載進行中生涯的保護，重建產物後再次通過 `check:site` 與完整 PWA 測試。真實外部下載僅用於取得固定 Phosphor 2.1.1 資產；驗證不依賴正式站或 CDN。
 
 ## 發布與真機閘門（待維護者）
+
+2026-09-24 正式站檢查：`https://ishengfang.github.io/yakyulife/` 可連線開啟，但當時部署的是原始碼（`src/pwa-build.js` 的 `BUILD_ID = null`、`sw.js` 的 `RELEASE = null`），無 build meta、Service Worker 註冊或 Cache Storage。以乾淨 persistent Chromium profile 連線開啟後清除 HTTP cache，關閉整個瀏覽器，再以相同 profile 斷網冷啟動，導覽失敗 `net::ERR_INTERNET_DISCONNECTED`。此結果表示該次正式部署尚不能離線遊玩，並非發布產物的本機離線驗證失敗。需確認 Pages Source 使用 GitHub Actions 並部署 workflow 產出的 `_site`，再驗收正式網址。
 
 - [ ] 合併後記錄 Pages Actions 成功 run、artifact build ID、實際網址與 HTTPS。Source 使用 GitHub Actions；CNAME 是紀錄，實際自訂網域須在 Pages 後台設定。此 fork 仍以 `https://ishengfang.github.io/yakyulife/` 為預期網址。
 - [ ] 記錄裝置、iOS 版本、測試者及日期。Safari 與主畫面 App 分別連線直到「可離線使用」。

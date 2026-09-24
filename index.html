@@ -90,7 +90,16 @@
     </div>
   </div>
   <footer id="start-footer">
-    <div id="pwa-panel" aria-label="離線與更新"><span id="pwa-status" role="status">離線尚未就緒</span><button id="pwa-action" type="button" hidden></button></div>
+    <div id="pwa-panel" aria-label="離線與更新">
+      <button id="pwa-offline" type="button" data-state="checking" aria-expanded="false" aria-controls="pwa-details"><span id="pwa-offline-label" role="status">檢查離線狀態…</span><span class="pwa-chevron" aria-hidden="true">⌄</span></button>
+      <span id="pwa-status" role="status">離線尚未就緒</span>
+      <button id="pwa-action" type="button" hidden></button>
+      <div id="pwa-details" hidden>
+        <p id="pwa-connection"></p>
+        <p id="pwa-help"></p>
+        <p>離線功能不包含生涯存檔；關閉或重新整理頁面會失去目前的生涯。清除網站資料後，需重新連線準備。</p>
+      </div>
+    </div>
     <button class="btn main" id="btn-start"><i class="ph-fill ph-play" aria-hidden="true"></i><span>開始生涯 ▸ 高一春天</span></button>
     <div class="start-secondary">
     <!-- Display preferences sit apart from the career choices above and are collapsed by
@@ -101,8 +110,15 @@
       </details>
       <div id="community"><a href="https://discord.gg/UnDYxFtz4U" target="_blank" rel="noopener noreferrer"><i class="ph-fill ph-chat-circle-dots" aria-hidden="true"></i>加入 Discord</a></div>
     </div>
-    <div class="start-meta">Produced by <a href="https://www.threads.com/@mr.themost" target="_blank" rel="noopener">最先生 Mr.TheMost</a><span id="ver-badge">v2.0.11</span></div>
-  </footer>
+    <div class="start-meta">
+  Produced by
+  <a href="https://www.threads.com/@mr.themost" target="_blank" rel="noopener">最先生 Mr.TheMost</a>
+  <span id="ver-badge">v2.0.11</span>
+  · 離線版改作 by
+  <a href="https://ishengfang.github.io/" target="_blank" rel="noopener">Ethan</a>
+  w/ Codex
+</div>
+</footer>
 </div>
 <div id="app">
   <aside id="tl-side"><div id="tl-in">

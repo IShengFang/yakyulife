@@ -2,7 +2,7 @@
 
 這是一款純文字的棒球生涯養成遊戲。玩家將從高中開始，經歷選秀、旅外、國際賽，直到引退，體驗每一次擲骰與選擇帶來的棒球人生。
 
-此 fork 的預計 Pages 網址：**[ishengfang.github.io/yakyulife](https://ishengfang.github.io/yakyulife/)**（Pages 尚待啟用與部署）。目前正式版可在 [yakyolife.com](https://www.yakyolife.com/) 遊玩。
+此 fork 的 Pages 網址：**[ishengfang.github.io/yakyulife](https://ishengfang.github.io/yakyulife/)**。原作者版本可在 [yakyolife.com](https://www.yakyolife.com/) 遊玩。
 
 ## 遊戲特色
 * **多層級聯賽**：完整模擬高中、大學、業餘成棒、中職、日職與大聯盟的升降級與合約交涉。
@@ -18,10 +18,14 @@ Phosphor 圖示另依其 [MIT 授權](assets/phosphor/LICENSE) 使用。
 
 ## 離線版（Phase 1）
 
-發布版首次連線下載完成後，首頁會提供「啟用離線模式」。按下後顯示「可離線使用」，才代表目前的瀏覽器已完成準備。此後可離線開新生涯、玩到引退並產生結算圖。文字採系統字型，必要圖示均附在本機資源中。
+首頁與遊戲中都有離線狀態按鈕，顯示「離線準備中」、「離線待啟用」、「可離線遊玩」或「離線尚未就緒」。點擊可查看目前連線狀態與使用說明，並重新檢查離線資源；不會重新整理或中斷生涯。
+
+發布版首次連線下載完成後，首頁會提供「啟用離線模式」。按下後，狀態按鈕顯示「可離線遊玩」，才代表目前的瀏覽器已完成準備。此後可離線開新生涯、玩到引退並產生結算圖。文字採系統字型，必要圖示均附在本機資源中。網路連線狀態與離線資源分開判定；有網路不代表離線已就緒，新版本下載中也不影響已備妥的現役版本。
 
 iPhone 可從 Safari 的分享選單選擇「加入主畫面」。Safari 分頁與主畫面 App 請各自連線完成上述準備；不要假設兩者共用快取。「新版本可用」出現後，玩家可選擇更新；所有分頁須位於首頁或已結束生涯，否則會延後。
 
 **目前尚無生涯存檔。** 關閉、重新整理或系統回收 App 都會失去進行中的生涯；續玩與備份屬於 Phase 3。清除網站資料後須重新連線準備。社群、贊助及外部分享目的地仍可能需要網路。
 
-開發與驗證入口見 [AGENTS.md](AGENTS.md)；發布產物、更新協定與尚待完成的真機驗收見 [Phase 1 紀錄](docs/phase1-pwa.md)。本機程式完成不表示此 fork 已部署。
+GitHub Pages 必須在 **Settings → Pages → Build and deployment → Source** 選擇 **GitHub Actions**，由現有 `Deploy Pages` workflow 建置、驗證並部署 `_site`。直接發布 repository 分支會提供 `BUILD_ID = null` 的原始碼版本，只能連線遊玩；狀態按鈕會顯示尚未就緒。
+
+開發與驗證入口見 [AGENTS.md](AGENTS.md)；發布產物、更新協定與尚待完成的真機驗收見 [Phase 1 紀錄](docs/phase1-pwa.md)。本機新增的功能需經部署才會出現在網站上。

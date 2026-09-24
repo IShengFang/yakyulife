@@ -919,7 +919,18 @@ html{scrollbar-width:none;-ms-overflow-style:none}
   margin:var(--space-16) 0 0}
 
 /* Kept in document flow: status never covers the game's fixed action panel. */
-#pwa-panel{position:relative;z-index:2;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px 12px;padding:6px max(12px,env(safe-area-inset-right)) 6px max(12px,env(safe-area-inset-left));font-size:12px;color:var(--dim);background:var(--bg)}
-#pwa-action{font:inherit;color:var(--text);background:var(--panel);border:1px solid currentColor;border-radius:6px;min-height:44px;padding:6px 12px;cursor:pointer}
-#pwa-action[hidden]{display:none}
-#pwa-panel[hidden]{display:none}
+#pwa-panel{position:relative;z-index:2;flex:none;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px 12px;padding:6px max(12px,env(safe-area-inset-right)) 6px max(12px,env(safe-area-inset-left));font-size:12px;color:var(--text-secondary);background:var(--bg-canvas)}
+#pwa-offline,#pwa-action{font:inherit;color:var(--text-primary);background:var(--surface-default);border:1px solid var(--border-strong);border-radius:var(--radius-component);min-height:44px;padding:6px 12px;cursor:pointer}
+#pwa-offline{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:700}
+#pwa-offline::before{content:'';width:8px;height:8px;flex:none;border-radius:50%;background:var(--text-muted)}
+#pwa-offline[data-state='ready']{color:var(--status-success);border-color:currentColor}
+#pwa-offline[data-state='ready']::before{background:currentColor}
+#pwa-offline[data-state='preparing']::before,#pwa-offline[data-state='activation']::before{background:var(--accent-primary)}
+#pwa-offline:focus-visible,#pwa-action:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+@media(hover:hover){#pwa-offline:hover,#pwa-action:hover{background:var(--surface-interactive)}}
+.pwa-chevron{font-size:16px;line-height:1}
+#pwa-offline[aria-expanded='true'] .pwa-chevron{transform:rotate(180deg)}
+#pwa-details{flex-basis:100%;max-width:560px;padding:8px 12px;text-align:left;background:var(--surface-default);border:1px solid var(--border-default);border-radius:var(--radius-component);line-height:1.6}
+#pwa-details p+p{margin-top:6px}
+#pwa-connection{font-weight:700;color:var(--text-primary)}
+#pwa-action[hidden],#pwa-status[hidden],#pwa-panel[hidden],#pwa-details[hidden]{display:none}
