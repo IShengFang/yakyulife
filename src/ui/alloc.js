@@ -71,14 +71,23 @@ export function allocUI(mode,label,done){
       r.innerHTML=`<span class="nm">${ABL[k]}</span><span class="bar"><i style="width:${v/80*100}%"></i><em style="left:${pk/80*100}%"></em></span><span class="val" style="line-height:1.1">${v}<small style="opacity:.5">/${pk}</small>${cst>1?`<span style="display:block;opacity:.5;font-size:10.5px;letter-spacing:1px;margin-top:-2px">${cr}/${cst}</span>`:''}</span>`;
       if(!cap&&remaining()>0)r.onclick=()=>{ const amt=dice?dice[idx]:1;
         const pc=(S.carry&&S.carry[k])||0;
-        const got=addAb(k,amt); touchedKeys[k]=(touchedKeys[k]||0)+amt; hist.push([k,got,pc]); if(dice)idx++; else pool--;
+        const got=addAb(k,amt); touchedKeys[k]=(touchedKeys[k]||0)+amt; hist.push([k,got,pc,amt]); if(dice)idx++; else pool--;
         r.querySelector('.val').innerHTML=`${S.ab[k]} <b style="display:block;font-size:10.5px">${got>0?'+'+got:'蓄力中'}</b>`; render(); board(0); };
       rows.appendChild(r); });
     btm.innerHTML='';
     /* 復原鈕固定佔位:無可復原時 disabled 而非消失,避免版面跳動誤觸 */
     const u=document.createElement('button'); u.className='btn'; u.style.textAlign='center';
     u.textContent='↩ 復原'; u.disabled=!hist.length;
-    if(hist.length)u.onclick=()=>{ const [k,got,pc]=hist.pop(); S.ab[k]-=got; if(S.carry)S.carry[k]=pc; if(dice)idx--; else pool++; render(); board(0); };
+    /* 復原必須連 touchedKeys 一起回滾。玩家回報「配錯再用復原修正，大巧不工不會觸發」：
+       舊版只退 S.ab／S.carry／骰子索引，touchedKeys 卻留著被復原掉的那一筆，於是
+       「一顆點錯又改掉」會被記成「兩項各點了一次」，專注度 touched[mk]/tot 永遠到不了
+       0.75，samePick 當場歸零——連續三年的計數被一個手滑無聲砍斷。
+       同一個洞也讓大器晚成的 gain（加點總幅度 >=16）被灌水，一併修掉。
+       扣的是 amt（投進去的點數）而不是 got（實際吃進能力的量），因為 touchedKeys
+       記的本來就是 amt——成本未滿的「蓄力中」也算玩家把這一顆押在這一項上。 */
+    if(hist.length)u.onclick=()=>{ const [k,got,pc,amt]=hist.pop(); S.ab[k]-=got; if(S.carry)S.carry[k]=pc;
+      touchedKeys[k]=(touchedKeys[k]||0)-(amt||0); if(touchedKeys[k]<=0)delete touchedKeys[k];
+      if(dice)idx--; else pool++; render(); board(0); };
     btm.appendChild(u);
     const allCap=keys.every(k=>S.ab[k]>=80);
     if(remaining()===0||allCap){ const c=document.createElement('button'); c.className='btn main';

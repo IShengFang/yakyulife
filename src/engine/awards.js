@@ -1,13 +1,17 @@
 import {S} from '../core/state.js?v=2.0.11';
 import {chance, clamp} from '../core/rng.js?v=2.0.11';
 import {DPN, GLOVE_TH, GLOVE_K} from '../data/abilities.js?v=2.0.11';
-import {LV} from '../data/teams.js?v=2.0.11';
+import {LV, envLeagueOps} from '../data/teams.js?v=2.0.11';
 import {AWARD_TH, starTh} from '../data/thresholds.js?v=2.0.11';
 import {card} from '../ui/dom.js?v=2.0.11';
 import {tlNote} from '../ui/timeline.js?v=2.0.11';
 import {isSP, slgOf, baseballERA, pitG} from './season.js?v=2.0.11';
 import {isCareerScoringAward, splitBySide} from './award-rules.js?v=2.0.11';
 import {traitCard, removeTrait} from '../flow/events.js?v=2.0.11';
+/* 明星賽的成績地板（說明見 awards() 裡的 floorOK）。
+   成績路線＝聯盟平均；人氣路線放寬，但不到「打不出東西也能進」的程度。 */
+export const AS_FLOOR_OPS=100, AS_FLOOR_OPS_POP=85;
+export const AS_FLOOR_ERA=80,  AS_FLOOR_ERA_POP=70;
 /* 獎項機率同時有硬下限與必得上限；數值越低越好的獎項（ERA）用 lower=true。 */
 export function awardP(value,hardLow,autoWin,base=25,lower=false){
   const ineligible=lower?value>hardLow:value<hardLow;
@@ -102,14 +106,44 @@ export function awards(bucket,st){
       const AS=starTh(S.lv);
       performanceOK=st.PA>=300&&(st.avg>=AS.avg||ops>=AS.ops||st.HR>=AS.hr||st.SB>=15);
     }
+    /* ── 成績保底（2026-10）──
+       玩家回報「明星賽沒有保底，極度爛的成績也有可能進入」。三個洞都在上面那個
+       四選一的 OR：打擊率／OPS／全壘打／盜壘任何一項達標就整季放行，不管其他三項
+       有多難看。實測最離譜的入選（27,339 次判定）：
+         .166／OPS .517／15 轟　← 靠 HR 那一項過關，OPS+ 77
+         .193／OPS .503／18 盜　← 靠 SB>=15 過關，OPS+ 75
+         .171／OPS .457／ 3 轟　← 台中猛獁人氣票，30% 固定機率、完全不看成績，OPS+ 65
+       主路線本來就要求 OPS+ 約 110（asOps 1.07~1.13），所以這裡加的是**地板**，
+       不是把門檻往上搬：成績路線 OPS+ 100（就是聯盟平均），人氣路線 OPS+ 85。
+       投手的地板要比最寬的那條分支還低才算地板——後援的 eraRP 在日職鬆到 ERA+ 65，
+       所以成績路線取 ERA+ 80、人氣路線 70。
+       實測砍掉的入選比例：打者 3.4%、投手 1.6%、人氣票 20%。 */
+    let floorOK=true, floorPop=true;
+    {
+      const L=LV[S.lv]||LV.CPBL1;
+      let m=-Infinity, mp=-Infinity;          /* 距離地板還有多少（二刀流取較好的一側） */
+      if(S.pos!=='P'&&st.PA>0){
+        const lo=envLeagueOps(L.env);
+        if(lo>0){ const p=((st.H+st.BB)/st.PA+slgOf(st))/lo*100;
+          m=Math.max(m,p-AS_FLOOR_OPS); mp=Math.max(mp,p-AS_FLOOR_OPS_POP); }
+      }
+      if((S.pos==='P'||S.pos==='TW')&&(st.IP||0)>0){
+        const e=baseballERA(st);
+        if(e>0){ const p=L.env.era/e*100;
+          m=Math.max(m,p-AS_FLOOR_ERA); mp=Math.max(mp,p-AS_FLOOR_ERA_POP); }
+      }
+      /* 兩側都沒有資料（理論上過不了 workloadOK）就不擋，不要把「沒打」判成「打得爛」。 */
+      if(Number.isFinite(m)){ floorOK=m>=0; floorPop=mp>=0; }
+    }
+    const meritOK=performanceOK&&floorOK;
     let asP=0;
     if(workloadOK){
-      if(performanceOK)asP=awardP(d,0,10,10);
-      if(popular)asP=performanceOK?clamp(asP+30,30,97):30;
+      if(meritOK)asP=awardP(d,0,10,10);
+      if(popular&&floorPop)asP=meritOK?clamp(asP+30,30,97):30;
     }
     if(chance(asP)){
       S.stats[bucket].AS++;
-      h.push(`${y} ${lgN}明星賽`+(popular&&!performanceOK?'（人氣入選）':''));
+      h.push(`${y} ${lgN}明星賽`+(popular&&!meritOK?'（人氣入選）':''));
     }
   }
 
