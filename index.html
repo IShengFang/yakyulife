@@ -37,7 +37,7 @@
 <link rel="stylesheet" href="assets/vendor/phosphor/regular/style.css">
 <link rel="stylesheet" href="assets/vendor/phosphor/bold/style.css">
 <link rel="stylesheet" href="assets/vendor/phosphor/fill/style.css">
-<link rel="stylesheet" href="css/style.css?v=2.0.12-offline-1">
+<link rel="stylesheet" href="css/style.css?v=2.0.12-offline-2">
 </head>
 <body>
 <div id="start">
@@ -103,8 +103,10 @@
       </details>
       <div id="community"><a href="https://discord.gg/UnDYxFtz4U" target="_blank" rel="noopener noreferrer"><i class="ph-fill ph-chat-circle-dots" aria-hidden="true"></i>加入 Discord</a></div>
     </div>
+    <button type="button" class="btn" id="webapp-install" aria-haspopup="dialog"><i class="ph-bold ph-download-simple" aria-hidden="true"></i><span id="webapp-install-label">安裝 Web App</span></button>
     <button type="button" id="offline-open" aria-haspopup="dialog"><span id="offline-summary" role="status">準備離線模式…</span><span> · 安裝說明</span></button>
     <div class="start-meta">Produced by <a href="https://www.threads.com/@mr.themost" target="_blank" rel="noopener">最先生 Mr.TheMost</a><span id="ver-badge">v2.0.12</span></div>
+    <p class="webapp-credit">Web App 改作：<span>ishengfang</span></p>
   </footer>
 </div>
 <div id="app">
@@ -155,13 +157,13 @@
   </footer>
 </div>
 <dialog id="offline-dialog" aria-labelledby="offline-title">
-  <h2 id="offline-title">離線遊玩與安裝</h2>
+  <h2 id="offline-title">Web App 安裝與離線遊玩</h2>
   <p id="offline-status" role="status" aria-live="polite">正在檢查離線檔案…</p>
   <progress id="offline-progress" aria-label="離線下載進度" hidden></progress>
   <p id="offline-storage"></p>
   <p id="offline-update" hidden>新版已下載。結束遊戲後，關閉所有遊戲視窗／App，再開啟即可套用。</p>
   <ol>
-    <li>在 iPhone 的 Safari 開啟本遊戲，點「分享」→「加入主畫面」（若有選項，開啟「作為網頁 App 打開」）。</li>
+    <li>安裝 Web App：<br>iPhone／iPad：使用 Safari 開啟本遊戲，點「分享」→「加入主畫面」（若有選項，開啟「作為網頁 App 打開」）。<br>Android／電腦：在支援安裝的瀏覽器選單中選「安裝應用程式」或「加入主畫面」。</li>
     <li>從主畫面圖示開啟一次，保持連線，等到顯示「可離線遊玩」。</li>
     <li>之後可在飛航模式開啟；正常關閉 App 或重開機不需要重新下載。</li>
   </ol>
@@ -175,6 +177,6 @@
 <!-- GitHub Pages sits behind a long-lived CDN cache. The entry point and every
      relative import carry this release token so browsers cannot mix versions. -->
 <script type="module" src="src/main.js?v=2.0.12-offline-1"></script>
-<script defer src="src/offline.js?v=1"></script>
+<script defer src="src/offline.js?v=2"></script>
 </body>
 </html>

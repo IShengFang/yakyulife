@@ -535,6 +535,8 @@ body[data-theme='c'] .lockup-sub em,body[data-theme='d'] .lockup-sub em{text-sha
   color:var(--text-muted);font-size:13px;line-height:20px;font-weight:500;letter-spacing:0}
 .start-meta a{color:var(--accent-primary);text-decoration:none}
 .start-meta a:hover,.start-meta a:focus-visible{text-decoration:underline}
+.webapp-credit{margin:4px 0 0;text-align:center;color:var(--text-muted);font-size:12px;line-height:20px;letter-spacing:0}
+.webapp-credit span{color:var(--text-secondary)}
 #ver-badge{font-family:var(--mono);color:var(--text-muted);letter-spacing:.02em}
 /* ---------- 贊助入口 ----------
    首頁膠囊屬於可捲動 main + 遊戲內選單的連結按鈕，兩處導向同一個贊助頁。 */
@@ -919,6 +921,8 @@ html{scrollbar-width:none;-ms-overflow-style:none}
   margin:var(--space-16) 0 0}
 
 /* Offline controls share the active theme and remain reachable in a Home Screen app. */
+#webapp-install{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;margin-top:8px;text-align:center}
+#webapp-install .ph-bold{font-size:18px;line-height:1}
 #offline-open{display:block;width:100%;min-height:44px;margin-top:4px;padding:8px;
   background:transparent;border:0;color:var(--text-secondary);font:inherit;font-size:13px;cursor:pointer}
 #offline-summary[data-ready='true']{color:var(--status-success)}

@@ -3,11 +3,41 @@
   const root=new URL('../',document.currentScript.src);
   const workerURL=new URL('sw.js',root).href;
   const $=id=>document.getElementById(id);
-  const standalone=()=>navigator.standalone===true||matchMedia('(display-mode: standalone)').matches;
+  const displayMode=matchMedia('(display-mode: standalone)');
+  const standalone=()=>navigator.standalone===true||displayMode.matches;
+  let installPrompt=null,installPending=false,appInstalled=false;
   let registration,ready=false,busy=false,lastError='',progress=null;
   let persistence='unknown';
   const supported=isSecureContext&&'serviceWorker' in navigator&&'caches' in window;
   const controlled=()=>navigator.serviceWorker?.controller?.scriptURL===workerURL;
+
+  function renderInstall(){
+    const installed=standalone()||appInstalled;
+    $('webapp-install').disabled=installPending;
+    $('webapp-install-label').textContent=installPending?'正在開啟安裝…':
+      standalone()?'Web App 已啟用':installed?'Web App 已安裝':'安裝 Web App';
+    $('webapp-install').querySelector('i').className='ph-bold '+(installed?'ph-check-circle':'ph-download-simple');
+  }
+
+  async function install(){
+    if(installPending)return;
+    if(standalone()||appInstalled||!installPrompt){open();return;}
+    // A deferred browser prompt can only be used once and needs this click gesture.
+    const prompt=installPrompt;
+    installPrompt=null;installPending=true;renderInstall();
+    try{await prompt.prompt();}
+    catch{open();}
+    finally{installPending=false;renderInstall();}
+  }
+
+  window.addEventListener('beforeinstallprompt',event=>{
+    event.preventDefault();
+    installPrompt=event;renderInstall();
+  });
+  window.addEventListener('appinstalled',()=>{
+    appInstalled=true;installPrompt=null;renderInstall();
+  });
+  displayMode.addEventListener('change',renderInstall);
 
   function render(){
     let text;
@@ -112,6 +142,7 @@
     if(!dialog.open)dialog.showModal();
     refresh();checkPersistence(standalone());
   }
+  $('webapp-install').addEventListener('click',install);
   $('offline-open').addEventListener('click',open);
   $('offline-prepare').addEventListener('click',prepare);
   window.addEventListener('yakyulife:offline-details',open);
@@ -119,8 +150,9 @@
   window.addEventListener('online',()=>{if(!ready)prepare();else refresh();});
   // Re-read actual Cache Storage after an app suspension; never trust a localStorage flag.
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
-  window.addEventListener('pageshow',()=>refresh());
+  window.addEventListener('pageshow',()=>{renderInstall();refresh();});
 
+  renderInstall();
   render();
   if(!supported)return;
   navigator.serviceWorker.addEventListener('controllerchange',()=>refresh());
