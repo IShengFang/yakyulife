@@ -52,6 +52,7 @@ export function menuModal(){
   const mob=document.body.classList.contains('mobile-ui');
   const big=document.body.classList.contains('big-text');
   modalOpen(`<div class="md-brand">${brandHTML()}</div>
+    <button class="btn" id="md-offline" style="text-align:center">離線遊玩與安裝</button>
     <button class="btn" id="md-theme" style="text-align:center">切換佈景主題</button>
     <button class="btn" id="md-big" style="text-align:center">${big?'切回標準字級':'改用大字級'}</button>
     ${wide?`<button class="btn" id="md-ui" style="text-align:center">${mob?'切回電腦版介面':'改用手機版介面'}</button>`:''}
@@ -59,6 +60,7 @@ export function menuModal(){
     <button class="btn warn" id="md-restart0" style="text-align:center;margin-top:14px">重新開始</button>
     <button class="btn" id="md-credits" style="text-align:center;margin-top:14px">特別感謝</button>
     <button class="btn" id="md-close" style="text-align:center;margin-top:14px">關閉</button>`);
+  $('md-offline').onclick=()=>window.dispatchEvent(new Event('yakyulife:offline-details'));
   $('md-theme').onclick=themeModal;
   $('md-big').onclick=()=>{ applyBigText(!big); menuModal(); };
   const mu=$('md-ui'); if(mu)mu.onclick=()=>{ applyMobileUI(!mob); menuModal(); };

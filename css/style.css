@@ -917,3 +917,24 @@ html{scrollbar-width:none;-ms-overflow-style:none}
 .md-thanks .cr-what{color:var(--text-secondary);font-size:13px;line-height:20px}
 .md-thanks .cr-you{text-align:center;color:var(--text-primary);font-size:14px;line-height:22px;
   margin:var(--space-16) 0 0}
+
+/* Offline controls share the active theme and remain reachable in a Home Screen app. */
+#offline-open{display:block;width:100%;min-height:44px;margin-top:4px;padding:8px;
+  background:transparent;border:0;color:var(--text-secondary);font:inherit;font-size:13px;cursor:pointer}
+#offline-summary[data-ready='true']{color:var(--status-success)}
+#offline-open:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+#offline-dialog{margin:auto;width:calc(100% - 32px);max-width:480px;
+  max-height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 32px);
+  overflow:auto;padding:24px;color:var(--text);background:var(--panel);
+  border:1px solid var(--edge);border-radius:var(--r);font-family:var(--sans)}
+#offline-dialog::backdrop{background:rgba(0,0,0,.65)}
+#offline-dialog h2{font-size:20px;margin-bottom:12px}
+#offline-dialog p{margin:12px 0}
+#offline-dialog ol{padding-left:24px;margin:16px 0}
+#offline-dialog li{margin:8px 0}
+#offline-dialog summary{cursor:pointer;min-height:44px;display:list-item;align-content:center}
+#offline-dialog .offline-note,#offline-storage,#offline-dialog details{font-size:13px;color:var(--text-secondary)}
+#offline-dialog[data-ready='true'] #offline-status{color:var(--status-success);font-weight:700}
+#offline-progress{width:100%;accent-color:var(--accent-primary)}
+#offline-update{border-left:3px solid var(--accent-primary);padding-left:12px}
+#offline-dialog .btn{width:100%;margin-top:12px}

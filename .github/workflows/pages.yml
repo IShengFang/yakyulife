@@ -14,6 +14,8 @@ name: Deploy Pages
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:        # 需要時可以從 Actions 頁面手動觸發
 
 permissions:
@@ -37,10 +39,13 @@ jobs:
         with:
           node-version: '22'
 
-      - name: 安裝 Playwright 與 Chromium
+      - name: 安裝 Playwright、Chromium 與 WebKit
         run: |
           npm install --no-save playwright
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
+
+      - name: 檢查離線資源清單
+        run: node tools/build-offline.mjs --check
 
       - name: 起本機伺服器並跑 tests/
         run: |
@@ -66,8 +71,12 @@ jobs:
           done
           exit $fail
 
+      - name: WebKit 離線 App 測試
+        run: PWA_BROWSER=webkit node tests/offline_pwa.mjs
+
   deploy:
     name: 部署
+    if: github.event_name != 'pull_request'
     needs: test            # 測試沒過就不部署
     runs-on: ubuntu-latest
     environment:
